@@ -1,0 +1,9 @@
+services:
+  awblackjack-web:
+    image: awdress/awblackjack-web:latest
+    container_name: awblackjack-web
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./server/.env

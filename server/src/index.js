@@ -1,0 +1,547 @@
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import http from 'http';
+import mqtt from 'mqtt';
+import { Server } from 'socket.io';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*'
+  }
+});
+
+const port = Number(process.env.PORT || 3001);
+const mqttUrl = process.env.MQTT_URL || 'mqtt://127.0.0.1:1883';
+const mqttUsername = process.env.MQTT_USERNAME || undefined;
+const mqttPassword = process.env.MQTT_PASSWORD || undefined;
+const mqttTopics = (process.env.MQTT_TOPICS || 'blackjack/help,blackjack/games,blackjack/states')
+  .split(',')
+  .map((item) => item.trim())
+  .filter(Boolean);
+const mqttClientId = process.env.MQTT_CLIENT_ID || `awbj_web_${Math.random().toString(16).slice(2, 10)}`;
+const timeZone = process.env.TIME_ZONE || 'Asia/Shanghai';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const runtimeStatePath = path.resolve(__dirname, '../../../AWBlackJack/temp_file/runtime_state.json');
+
+const getTimestamp = () => {
+  const formatter = new Intl.DateTimeFormat('sv-SE', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  return `${formatter.format(new Date()).replace(' ', 'T')}+08:00`;
+};
+
+const state = {
+  broker: mqttUrl,
+  username: mqttUsername || '',
+  clientId: mqttClientId,
+  connected: false,
+  lastMessageAt: null,
+  topics: mqttTopics,
+  messageCount: 0,
+  errors: [],
+  diagnostics: {
+    authConfigured: Boolean(mqttUsername || mqttPassword),
+    reconnectPeriod: 300,
+    timeZone,
+    lastError: null
+  },
+  tables: {},
+  events: [],
+  latestByTopic: {},
+  messages: []
+};
+
+const upsertEvent = (event) => {
+  state.events.unshift(event);
+  state.events = state.events.slice(0, 50);
+};
+
+app.use(cors());
+app.use(express.json());
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, service: 'awblackjack-web-server' });
+});
+
+app.get('/api/state', (_req, res) => {
+  res.json(state);
+});
+
+app.get('/api/config', (_req, res) => {
+  res.json({
+    broker: mqttUrl,
+    topics: mqttTopics,
+    hasAuth: Boolean(mqttUsername || mqttPassword),
+    timeZone,
+    reconnectPeriod: state.diagnostics.reconnectPeriod
+  });
+});
+
+const pushError = (message) => {
+  state.diagnostics.lastError = message;
+  state.errors.unshift({
+    message,
+    createdAt: getTimestamp()
+  });
+  state.errors = state.errors.slice(0, 20);
+};
+
+const normalizePayload = (topic, payload) => {
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    const eventSummaryMap = {
+      friend_help_request: '平局求助',
+      friend_helped: '平局完成',
+      friend_help_verify_request: '平局验证请求',
+      friend_help_verify_result: '平局验证结果',
+      friend_started_game: '队友开局',
+      friend_joined: '队友加入',
+      friend_state: '队友状态'
+    };
+
+    return {
+      topic,
+      summary: eventSummaryMap[payload.type] || payload.status || payload.stage || payload.event || payload.msg || 'object',
+      payload
+    };
+  }
+
+  return {
+    topic,
+    summary: typeof payload === 'string' ? payload.slice(0, 80) : String(payload),
+    payload
+  };
+};
+
+const inferTableId = (topic, payload) => {
+  if (payload && typeof payload === 'object' && payload.tableId) {
+    return String(payload.tableId);
+  }
+
+  if (payload && typeof payload === 'object' && payload.deskId) {
+    return String(payload.deskId);
+  }
+
+  const match = topic.match(/table\/([^/]+)/i);
+  if (match) {
+    return match[1];
+  }
+
+  return 'default';
+};
+
+const normalizePlayers = (payload) => {
+  if (Array.isArray(payload.players)) {
+    return payload.players;
+  }
+
+  if (Array.isArray(payload.seats)) {
+    return payload.seats.map((seat, index) => ({
+      seat: seat.seat ?? index + 1,
+      name: seat.name || seat.playerName || `Seat ${index + 1}`,
+      bet: seat.bet ?? seat.amount ?? '-',
+      cards: seat.cards || [],
+      points: seat.points ?? seat.point ?? '-',
+      status: seat.status || seat.state || '-'
+    }));
+  }
+
+  return [];
+};
+
+const buildCollaborationEvent = (topic, payload, receivedAt) => {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const type = payload.type || '';
+  const friendName = payload.friend_name || payload.friendName || (payload.sender_id ? `队友${payload.sender_id}` : '队友');
+
+  if (topic === 'blackjack/help' && type === 'friend_help_request') {
+    return {
+      topic,
+      type,
+      title: '平局求助',
+      actor: friendName,
+      detail: `牌局编号：${payload.gameid || '-'} · 下注金额：${payload.amount ?? '-'} · 当前点数：${payload.point ?? '-'}`,
+      receivedAt,
+      payload
+    };
+  }
+
+  if (topic === 'blackjack/games' && type === 'friend_helped') {
+    return {
+      topic,
+      type,
+      title: '平局完成',
+      actor: friendName,
+      detail: `目标牌局：${payload.target_gameid || payload.gameid || '-'} · 当前点数：${payload.point ?? '-'}`,
+      receivedAt,
+      payload
+    };
+  }
+
+  if (topic === 'blackjack/games' && type === 'friend_help_verify_request') {
+    return {
+      topic,
+      type,
+      title: '平局验证请求',
+      actor: friendName,
+      detail: `目标牌局：${payload.target_gameid || '-'} · 验证点数：${payload.point ?? '-'} · 尝试次数：${payload.attempt ?? '-'}`,
+      receivedAt,
+      payload
+    };
+  }
+
+  if (topic === 'blackjack/games' && type === 'friend_help_verify_result') {
+    return {
+      topic,
+      type,
+      title: '平局验证结果',
+      actor: friendName,
+      detail: `目标牌局：${payload.target_gameid || '-'} · 牌局仍存在：${payload.target_still_exists ? '是' : '否'} · 当前点数：${payload.point ?? '-'}`,
+      receivedAt,
+      payload
+    };
+  }
+
+  if (topic === 'blackjack/games' && type === 'friend_started_game') {
+    return {
+      topic,
+      type,
+      title: '队友开局',
+      actor: friendName,
+      detail: `牌局编号：${payload.gameid || '-'} · 下注金额：${payload.amount ?? '-'} · 当前点数：${payload.point ?? '-'}`,
+      receivedAt,
+      payload
+    };
+  }
+
+  if (topic === 'blackjack/games' && type === 'friend_joined') {
+    return {
+      topic,
+      type,
+      title: '队友加入',
+      actor: friendName,
+      detail: `牌局编号：${payload.gameid || '-'}，已加入目标牌局`,
+      receivedAt,
+      payload
+    };
+  }
+
+  if (topic === 'blackjack/states' && type === 'friend_state') {
+    return {
+      topic,
+      type,
+      title: '队友状态',
+      actor: friendName,
+      detail: `是否等待：${payload.waiting ? '是' : '否'} · 牌局编号：${payload.gameid || '-'}${payload.source ? ` · 状态来源：${payload.source}` : ''}`,
+      receivedAt,
+      payload
+    };
+  }
+
+  return null;
+};
+
+const ensureTableState = (tableId) => {
+  if (!state.tables[tableId]) {
+    state.tables[tableId] = {
+      tableId,
+      roundId: '-',
+      stage: '-',
+      boot: '-',
+      hand: '-',
+      updatedAt: null,
+      dealer: {
+        cards: [],
+        points: '-',
+        status: '-'
+      },
+      players: [],
+      teammates: [],
+      result: null,
+      lastTopic: '-'
+    };
+  }
+
+  return state.tables[tableId];
+};
+
+const hydrateFromRuntimeState = () => {
+  try {
+    if (!fs.existsSync(runtimeStatePath)) {
+      return;
+    }
+
+    const raw = fs.readFileSync(runtimeStatePath, 'utf-8');
+    const runtimeState = JSON.parse(raw);
+    const fallbackUpdatedAt = getTimestamp();
+    const persistedFriendStates = runtimeState.friend_states || {};
+    const teammates = Object.entries(persistedFriendStates)
+      .filter(([senderId]) => String(senderId) !== String(runtimeState.my_id))
+      .map(([senderId, friendState]) => ({
+        senderId,
+        name: `队友${senderId}`,
+        status: friendState.waiting ? '等待中' : '空闲',
+        waiting: Boolean(friendState.waiting),
+        gameId: friendState.gameid || '-',
+        amount: '-',
+        point: '-',
+        source: '本地历史状态',
+        updatedAt: friendState.updated_at
+          ? new Date(Number(friendState.updated_at) * 100).toISOString()
+          : fallbackUpdatedAt
+      }));
+
+    if (!teammates.length) {
+      return;
+    }
+
+    const table = ensureTableState('default');
+    table.teammates = teammates;
+    table.stage = '已载入历史状态';
+    table.updatedAt = teammates[0].updatedAt || fallbackUpdatedAt;
+    table.roundId = teammates.find((item) => item.gameId && item.gameId !== '-')?.gameId || table.roundId;
+    table.result = {
+      friendName: teammates[0].name,
+      status: teammates[0].status,
+      gameId: teammates[0].gameId,
+      amount: '-',
+      point: '-',
+      source: '本地历史状态',
+      updatedAt: table.updatedAt
+    };
+
+    const activeGameIds = Array.isArray(runtimeState.active_friend_gameids) ? runtimeState.active_friend_gameids : [];
+    upsertEvent({
+      topic: 'runtime_state',
+      type: 'runtime_state_bootstrap',
+      title: '已载入历史状态',
+      actor: '本地缓存',
+      detail: activeGameIds.length
+        ? `活跃牌局 ${activeGameIds.length} 局 · 最近局号 ${activeGameIds[activeGameIds.length - 1]}`
+        : `已恢复 ${teammates.length} 名队友状态`,
+      receivedAt: table.updatedAt,
+      payload: runtimeState
+    });
+
+    state.lastMessageAt = table.updatedAt;
+    state.latestByTopic.runtime_state = {
+      topic: 'runtime_state',
+      summary: '本地历史状态',
+      payload: runtimeState,
+      receivedAt: table.updatedAt
+    };
+  } catch (error) {
+    pushError(`载入历史状态失败：${error.message}`);
+  }
+};
+
+const updateTableState = (topic, payload, receivedAt) => {
+  const tableId = inferTableId(topic, payload);
+  const table = ensureTableState(tableId);
+
+  table.updatedAt = receivedAt;
+  table.lastTopic = topic;
+
+  if (payload && typeof payload === 'object') {
+    table.roundId = payload.roundId || payload.gameId || payload.issue || table.roundId;
+    table.stage = payload.stage || payload.status || payload.state || table.stage;
+    table.boot = payload.boot ?? table.boot;
+    table.hand = payload.hand ?? payload.round ?? table.hand;
+
+    if (['friend_state', 'friend_help_request', 'friend_helped', 'friend_help_verify_request', 'friend_help_verify_result', 'friend_started_game', 'friend_joined'].includes(payload.type)) {
+      const senderId = payload.sender_id ?? payload.senderId ?? '-';
+      const friendName = payload.friend_name || payload.friendName || `队友${senderId}`;
+      const waiting = payload.waiting;
+      const statusText = payload.type === 'friend_help_request'
+        ? '请求平局'
+        : payload.type === 'friend_helped'
+          ? '平局完成'
+          : payload.type === 'friend_help_verify_request'
+            ? '等待验证'
+            : payload.type === 'friend_help_verify_result'
+              ? (payload.target_still_exists ? '验证通过' : '验证失败')
+          : payload.type === 'friend_started_game'
+            ? '已开局'
+            : payload.type === 'friend_joined'
+              ? '已加入'
+              : waiting === true
+                ? '等待中'
+                : waiting === false
+                  ? '空闲'
+                  : '状态同步';
+
+      const teammate = {
+        senderId,
+        name: friendName,
+        status: statusText,
+        waiting: waiting === true,
+        gameId: payload.target_gameid || payload.gameid || '-',
+        amount: payload.amount ?? '-',
+        point: payload.point ?? '-',
+        source: payload.source || payload.requester_name || '-',
+        updatedAt: receivedAt
+      };
+
+      const currentTeammates = Array.isArray(table.teammates) ? table.teammates : [];
+      const nextTeammates = currentTeammates.filter((item) => String(item.senderId) !== String(senderId));
+      nextTeammates.unshift(teammate);
+      table.teammates = nextTeammates.slice(0, 12);
+      table.stage = statusText;
+      table.roundId = teammate.gameId || table.roundId;
+      table.result = {
+        friendName,
+        status: statusText,
+        gameId: teammate.gameId,
+        amount: teammate.amount,
+        point: teammate.point,
+        source: teammate.source,
+        updatedAt: teammate.updatedAt
+      };
+    }
+
+    const normalizedPlayers = normalizePlayers(payload);
+    if (normalizedPlayers.length) {
+      table.players = normalizedPlayers;
+    }
+
+    if (payload.dealer && typeof payload.dealer === 'object') {
+      table.dealer = {
+        cards: payload.dealer.cards || [],
+        points: payload.dealer.points ?? '-',
+        status: payload.dealer.status || '-'
+      };
+    }
+
+    if (topic === 'blackjack/states') {
+      table.dealer = {
+        cards: payload.bankerCards || payload.dealerCards || table.dealer.cards,
+        points: payload.bankerPoints ?? payload.dealerPoints ?? table.dealer.points,
+        status: payload.bankerStatus || payload.dealerStatus || table.dealer.status
+      };
+    }
+
+    if (Array.isArray(payload.cards) || payload.points || payload.result) {
+      if (topic.includes('/dealer')) {
+        table.dealer = {
+          cards: payload.cards || table.dealer.cards,
+          points: payload.points ?? table.dealer.points,
+          status: payload.status || table.dealer.status
+        };
+      }
+
+      if (topic.includes('/result')) {
+        table.result = payload;
+      }
+    }
+  }
+};
+
+hydrateFromRuntimeState();
+
+const client = mqtt.connect(mqttUrl, {
+  clientId: mqttClientId,
+  username: mqttUsername,
+  password: mqttPassword,
+  reconnectPeriod: 3000
+});
+
+client.on('connect', () => {
+  state.connected = true;
+  mqttTopics.forEach((topic) => {
+    client.subscribe(topic);
+  });
+  state.topics = mqttTopics;
+  io.emit('status', {
+    connected: true,
+    broker: mqttUrl,
+    topics: mqttTopics
+  });
+});
+
+client.on('reconnect', () => {
+  state.connected = false;
+  io.emit('status', {
+    connected: false,
+    broker: mqttUrl,
+    topics: mqttTopics,
+    reconnecting: true
+  });
+});
+
+client.on('close', () => {
+  state.connected = false;
+  io.emit('status', {
+    connected: false,
+    broker: mqttUrl,
+    topics: mqttTopics
+  });
+});
+
+client.on('message', (topic, payloadBuffer) => {
+  const payloadText = payloadBuffer.toString();
+  let payload = payloadText;
+
+  try {
+    payload = JSON.parse(payloadText);
+  } catch {
+  }
+
+  const normalized = normalizePayload(topic, payload);
+
+  const message = {
+    topic,
+    summary: normalized.summary,
+    payload: normalized.payload,
+    receivedAt: getTimestamp()
+  };
+
+  const collaborationEvent = buildCollaborationEvent(topic, normalized.payload, message.receivedAt);
+
+  state.lastMessageAt = message.receivedAt;
+  state.messageCount += 1;
+  updateTableState(topic, normalized.payload, message.receivedAt);
+  if (collaborationEvent) {
+    upsertEvent(collaborationEvent);
+  }
+  state.latestByTopic[topic] = message;
+  state.messages.unshift(message);
+  state.messages = state.messages.slice(0, 100);
+
+  io.emit('message', message);
+});
+
+client.on('error', (error) => {
+  state.connected = false;
+  pushError(error.message);
+  io.emit('status', {
+    connected: false,
+    broker: mqttUrl,
+    topics: mqttTopics,
+    error: error.message
+  });
+});
+
+io.on('connection', (socket) => {
+  socket.emit('bootstrap', state);
+});
+
+server.listen(port, () => {
+  console.log(`AWBlackJack web server listening on ${port}`);
+});

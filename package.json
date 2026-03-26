@@ -1,0 +1,16 @@
+{
+  "name": "awblackjack-web",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev:server": "npm --workspace server run dev",
+    "dev:web": "npm --workspace web run dev",
+    "dev:web:host": "npm --workspace web exec vite --host",
+    "build": "npm --workspace web run build",
+    "start": "npm --workspace server run start"
+  }
+}

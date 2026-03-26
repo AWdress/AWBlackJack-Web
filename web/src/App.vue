@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { io } from 'socket.io-client';
 import logoUrl from './logo.png';
 
-const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
 const connected = ref(false);
 const broker = ref('');
 const clientId = ref('');

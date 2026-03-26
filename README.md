@@ -105,6 +105,35 @@ docker compose up -d
 
 - `server/.env.example` -> `server/.env`
 
+如果你需要让页面在 MQTT 还没推送实时消息时也显示历史状态，请额外准备：
+
+- `server/data/runtime_state.json`
+
+`docker-compose.yml` 已默认把它挂载到容器内的 `/data/runtime_state.json`。
+
+当前支持的历史状态文件字段示例：
+
+```json
+{
+	"my_id": 10001,
+	"active_friend_gameids": [
+		"G20260327-001"
+	],
+	"friend_states": {
+		"10002": {
+			"waiting": true,
+			"gameid": "G20260327-001",
+			"updated_at": 174300000
+		},
+		"10003": {
+			"waiting": false,
+			"gameid": "G20260327-002",
+			"updated_at": 17430000050
+		}
+	}
+}
+```
+
 停止服务：
 
 ```bash

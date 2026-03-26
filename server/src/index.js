@@ -28,8 +28,14 @@ const mqttClientId = process.env.MQTT_CLIENT_ID || `awbj_web_${Math.random().toS
 const timeZone = process.env.TIME_ZONE || 'Asia/Shanghai';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const runtimeStatePath = path.resolve(__dirname, '../../../AWBlackJack/temp_file/runtime_state.json');
 const webDistPath = path.resolve(__dirname, '../../web/dist');
+const configuredRuntimeStatePath = process.env.RUNTIME_STATE_PATH;
+const runtimeStateCandidates = [
+  configuredRuntimeStatePath,
+  path.resolve('/data/runtime_state.json'),
+  path.resolve(__dirname, '../data/runtime_state.json'),
+  path.resolve(__dirname, '../../../AWBlackJack/temp_file/runtime_state.json')
+].filter(Boolean);
 
 const getTimestamp = () => {
   const formatter = new Intl.DateTimeFormat('sv-SE', {
@@ -287,9 +293,13 @@ const ensureTableState = (tableId) => {
   return state.tables[tableId];
 };
 
+const getRuntimeStatePath = () => runtimeStateCandidates.find((candidatePath) => fs.existsSync(candidatePath));
+
 const hydrateFromRuntimeState = () => {
   try {
-    if (!fs.existsSync(runtimeStatePath)) {
+    const runtimeStatePath = getRuntimeStatePath();
+
+    if (!runtimeStatePath) {
       return;
     }
 
@@ -352,6 +362,7 @@ const hydrateFromRuntimeState = () => {
       payload: runtimeState,
       receivedAt: table.updatedAt
     };
+    state.diagnostics.runtimeStatePath = runtimeStatePath;
   } catch (error) {
     pushError(`载入历史状态失败：${error.message}`);
   }

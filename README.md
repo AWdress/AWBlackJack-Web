@@ -91,6 +91,11 @@ http://localhost:3001
 
 项目根目录已提供给最终用户使用的 `docker-compose.yml`，默认直接拉取 Docker Hub 镜像：
 
+- 这是单容器部署方式
+- 容器内已包含前端静态资源与服务端
+- 对外只需要暴露一个端口：`13001`
+- 启动后直接访问：`http://localhost:13001`
+
 ```bash
 docker compose pull
 docker compose up -d

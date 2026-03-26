@@ -29,6 +29,7 @@ const timeZone = process.env.TIME_ZONE || 'Asia/Shanghai';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const runtimeStatePath = path.resolve(__dirname, '../../../AWBlackJack/temp_file/runtime_state.json');
+const webDistPath = path.resolve(__dirname, '../../web/dist');
 
 const getTimestamp = () => {
   const formatter = new Intl.DateTimeFormat('sv-SE', {
@@ -91,6 +92,10 @@ app.get('/api/config', (_req, res) => {
     reconnectPeriod: state.diagnostics.reconnectPeriod
   });
 });
+
+if (fs.existsSync(webDistPath)) {
+  app.use(express.static(webDistPath));
+}
 
 const pushError = (message) => {
   state.diagnostics.lastError = message;
@@ -541,6 +546,12 @@ client.on('error', (error) => {
 io.on('connection', (socket) => {
   socket.emit('bootstrap', state);
 });
+
+if (fs.existsSync(webDistPath)) {
+  app.get(/^(?!\/api\/).*/, (_req, res) => {
+    res.sendFile(path.join(webDistPath, 'index.html'));
+  });
+}
 
 server.listen(port, () => {
   console.log(`AWBlackJack web server listening on ${port}`);

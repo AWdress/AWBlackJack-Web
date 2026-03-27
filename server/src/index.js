@@ -255,13 +255,14 @@ const buildCollaborationEvent = (topic, payload, receivedAt) => {
   }
 
   if (topic === 'blackjack/states' && type === 'friend_state') {
-    const gameidDisplay = payload.gameid == null ? '无牌局' : payload.gameid || '-';
+    const gameidDisplay = payload.gameid == null ? '无' : payload.gameid || '-';
+    const statusText = payload.waiting ? '等待中' : '空闲';
     return {
       topic,
       type,
       title: '队友状态',
       actor: friendName,
-      detail: `是否等待：${payload.waiting ? '是' : '否'} · 牌局状态：${gameidDisplay}${payload.source ? ` · 状态来源：${payload.source}` : ''}`,
+      detail: `${statusText} · 牌局：${gameidDisplay}${payload.source ? ` · 来源：${payload.source}` : ''}`,
       receivedAt,
       payload
     };

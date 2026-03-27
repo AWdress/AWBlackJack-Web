@@ -16,6 +16,7 @@ const tables = ref({});
 const events = ref([]);
 const errorText = ref('');
 const sessionToken = ref('');
+const currentUser = ref('');
 
 let socket;
 

@@ -417,8 +417,14 @@ const updateTableState = (topic, payload, receivedAt) => {
       };
 
       const currentTeammates = Array.isArray(table.teammates) ? table.teammates : [];
-      const nextTeammates = currentTeammates.filter((item) => String(item.senderId) !== String(senderId));
-      nextTeammates.unshift(teammate);
+      let nextTeammates = currentTeammates.filter((item) => String(item.senderId) !== String(senderId));
+      // 按 senderId 排序插入（字符串比较）
+      const insertIndex = nextTeammates.findIndex((item) => String(item.senderId).localeCompare(String(senderId)) > 0);
+      if (insertIndex === -1) {
+        nextTeammates.push(teammate);
+      } else {
+        nextTeammates.splice(insertIndex, 0, teammate);
+      }
       table.teammates = nextTeammates.slice(0, 12);
       table.stage = statusText;
       const validGameId = teammate.gameId && teammate.gameId !== '-' ? teammate.gameId : null;

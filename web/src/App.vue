@@ -1,9 +1,11 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { io } from 'socket.io-client';
-import logoUrl from './logo.png';
+import Login from './Login.vue';
 
 const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
+const isAuthenticated = ref(false);
+const checkingAuth = ref(true);
 const connected = ref(false);
 const broker = ref('');
 const clientId = ref('');
@@ -13,6 +15,7 @@ const errors = ref([]);
 const tables = ref({});
 const events = ref([]);
 const errorText = ref('');
+const sessionToken = ref('');
 
 let socket;
 
@@ -47,12 +50,42 @@ const applyState = (state) => {
   events.value = state.events || [];
 };
 
-onMounted(async () => {
-  const response = await fetch(`${serverUrl}/api/state`);
-  const state = await response.json();
-  applyState(state);
+const checkAuthStatus = async () => {
+  checkingAuth.value = true;
+  try {
+    const response = await fetch(`${serverUrl}/api/auth/status`);
+    const data = await response.json();
+    
+    if (data.isAuthenticated) {
+      isAuthenticated.value = true;
+    } else {
+      isAuthenticated.value = false;
+    }
+  } catch (error) {
+    console.error('检查认证状态失败:', error);
+    isAuthenticated.value = false;
+  } finally {
+    checkingAuth.value = false;
+  }
+};
 
-  socket = io(serverUrl);
+const initSocketConnection = () => {
+  if (socket) {
+    socket.disconnect();
+  }
+
+  const options = sessionToken.value ? { auth: { token: sessionToken.value } : {};
+  socket = io(serverUrl, options);
+
+  socket.on('connect_error', (error) => {
+    console.error('Socket连接错误:', error);
+  });
+
+  socket.on('unauthorized', (data) => {
+    console.log('Socket未授权:', data);
+    isAuthenticated.value = false;
+    socket.disconnect();
+  });
 
   socket.on('bootstrap', (statePayload) => {
     applyState(statePayload);
@@ -68,14 +101,80 @@ onMounted(async () => {
     lastMessageAt.value = message.receivedAt;
     messageCount.value += 1;
 
-    fetch(`${serverUrl}/api/state`)
-      .then((response) => response.json())
+    fetch(`${serverUrl}/api/state`, {
+      credentials: 'include'
+    })
+      .then((response) => {
+        if (response.status === 401) {
+          isAuthenticated.value = false;
+          throw new Error('需要登录');
+        }
+        return response.json();
+      })
       .then((statePayload) => {
         applyState(statePayload);
       })
       .catch(() => {
       });
   });
+};
+
+const handleLoginSuccess = () => {
+  isAuthenticated.value = true;
+};
+
+const handleLogout = async () => {
+  try {
+    await fetch(`${serverUrl}/api/logout`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+  } catch (error) {
+    console.error('登出失败:', error);
+  }
+  
+  isAuthenticated.value = false;
+  sessionToken.value = '';
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+  }
+};
+
+const initDashboard = () => {
+  checkAuthStatus().then(() => {
+    if (!isAuthenticated.value) return;
+    
+    fetch(`${serverUrl}/api/state`, {
+      credentials: 'include'
+    })
+      .then((response) => {
+        if (response.status === 401) {
+          isAuthenticated.value = false;
+          return null;
+        }
+        return response.json();
+      })
+      .then((state) => {
+        if (state) {
+          applyState(state);
+          initSocketConnection();
+        }
+      })
+      .catch((error) => {
+        console.error('初始化失败:', error);
+      });
+  });
+};
+
+watch(isAuthenticated, (newValue) => {
+  if (newValue) {
+    initDashboard();
+  }
+});
+
+onMounted(() => {
+  checkAuthStatus();
 });
 
 onUnmounted(() => {
@@ -86,17 +185,32 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="page">
+  <div v-if="checkingAuth" class="loading-container">
+    <div class="loading-spinner"></div>
+    <p>检查认证状态...</p>
+  </div>
+  
+  <Login 
+    v-else-if="!isAuthenticated" 
+    @login-success="handleLoginSuccess" 
+  />
+  
+  <div v-else class="page">
     <header class="hero">
       <div class="hero-brand">
-        <img :src="logoUrl" alt="BLACKJACK Logo" class="hero-logo" />
+        <img src="./logo.png" alt="BLACKJACK Logo" class="hero-logo" />
         <div>
-        <h1>BlackJack实时协同看板</h1>
-        <p>用牌桌视图展示当前协同进展，不显示原始代码和调试信息</p>
+          <h1>BlackJack实时协同看板</h1>
+          <p>用牌桌视图展示当前协同进展，不显示原始代码和调试信息</p>
         </div>
       </div>
-      <div class="status" :class="connected ? 'online' : 'offline'">
-        {{ connected ? '消息通道已连接' : '消息通道未连接' }}
+      <div class="hero-controls">
+        <div class="status" :class="connected ? 'online' : 'offline'">
+          {{ connected ? '消息通道已连接' : '消息通道未连接' }}
+        </div>
+        <button @click="handleLogout" class="logout-button">
+          退出登录
+        </button>
       </div>
     </header>
 

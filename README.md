@@ -47,7 +47,16 @@ PORT=3001
 MQTT_URL=mqtt://127.0.0.1:1883
 MQTT_USERNAME=
 MQTT_PASSWORD=
-MQTT_TOPICS=awblackjack/#
+MQTT_TOPICS=blackjack/help,blackjack/games,blackjack/states
+MQTT_CLIENT_ID=awblackjack_web_panel
+TIME_ZONE=Asia/Shanghai
+
+# 认证配置（可选）
+# 如果设置了 AUTH_PASSWORD，访问界面需要密码
+# AUTH_PASSWORD=your-secure-password-here
+
+# 会话密钥（可选）
+# SESSION_SECRET=awblackjack-web-secret-change-in-production
 ```
 
 `web/.env` 示例：
@@ -55,6 +64,29 @@ MQTT_TOPICS=awblackjack/#
 ```env
 VITE_SERVER_URL=http://localhost:3001
 ```
+
+## 登录保护
+
+### 启用登录保护
+要启用登录保护，只需在 `server/.env` 中设置 `AUTH_PASSWORD` 环境变量：
+
+```env
+AUTH_PASSWORD=your-secure-password-here
+```
+
+### 登录流程
+1. 当 `AUTH_PASSWORD` 被设置后，访问界面会显示登录页面
+2. 输入正确的密码后进入系统
+3. 会话有效期为24小时
+4. 点击"退出登录"可立即结束会话
+
+### 无密码访问
+如果不设置 `AUTH_PASSWORD`，系统将直接开放访问，无需登录。
+
+### 安全性说明
+- 密码通过HTTP cookie存储（httpOnly标志）
+- 会话在服务器内存中管理
+- 建议在生产环境中设置强密码
 
 ## 本地开发
 

@@ -7,6 +7,7 @@ import { Server } from 'socket.io';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import cookieParser from 'cookie-parser';
 
 const app = express();
 const server = http.createServer(app);
@@ -26,6 +27,8 @@ const mqttTopics = (process.env.MQTT_TOPICS || 'blackjack/help,blackjack/games,b
   .filter(Boolean);
 const mqttClientId = process.env.MQTT_CLIENT_ID || `awbj_web_${Math.random().toString(16).slice(2, 10)}`;
 const timeZone = process.env.TIME_ZONE || 'Asia/Shanghai';
+const authPassword = process.env.AUTH_PASSWORD || null;
+const sessionSecret = process.env.SESSION_SECRET || 'awblackjack-web-secret-change-in-production';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const webDistPath = path.resolve(__dirname, '../../web/dist');
@@ -50,6 +53,45 @@ const getTimestamp = () => {
   });
 
   return `${formatter.format(new Date()).replace(' ', 'T')}+08:00`;
+};
+
+// 简单的内存会话存储
+const activeSessions = new Map();
+
+const generateSessionToken = () => {
+  return Math.random().toString(36).substring(2) + Date.now().toString(36);
+};
+
+const createSession = () => {
+  const token = generateSessionToken();
+  const expiresAt = Date.now() + 24 * 60 * 60 * 100; // 24小时
+  activeSessions.set(token, { expiresAt });
+  return token;
+};
+
+const validateSession = (token) => {
+  if (!token) return false;
+  const session = activeSessions.get(token);
+  if (!session) return false;
+  if (Date.now() > session.expiresAt) {
+    activeSessions.delete(token);
+    return false;
+  }
+  return true;
+};
+
+const requireAuth = (req, res, next) => {
+  if (!authPassword) {
+    // 没有设置密码时，直接放行
+    return next();
+  }
+  
+  const token = req.cookies?.sessionToken || req.headers['x-session-token'];
+  if (validateSession(token)) {
+    return next();
+  }
+  
+  res.status(401).json({ error: '需要登录' });
 };
 
 const state = {
@@ -78,18 +120,72 @@ const upsertEvent = (event) => {
   state.events = state.events.slice(0, 50);
 };
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
+app.use(cookieParser());
 
+// 公开的健康检查
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'awblackjack-web-server' });
 });
 
-app.get('/api/state', (_req, res) => {
+// 登录API
+app.post('/api/login', (req, res) => {
+  if (!authPassword) {
+    return res.json({ 
+      success: true, 
+      message: '系统未设置密码，直接访问' 
+    });
+  }
+  
+  const { password } = req.body;
+  if (password === authPassword) {
+    const token = createSession();
+    res.cookie('sessionToken', token, { 
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 24 * 60 * 60 * 100 // 24小时
+    });
+    return res.json({ 
+      success: true, 
+      message: '登录成功',
+      token 
+    });
+  }
+  
+  res.status(401).json({ 
+    success: false, 
+    message: '密码错误' 
+  });
+});
+
+// 登出API
+app.post('/api/logout', (req, res) => {
+  const token = req.cookies?.sessionToken || req.headers['x-session-token'];
+  if (token) {
+    activeSessions.delete(token);
+  }
+  res.clearCookie('sessionToken');
+  res.json({ success: true, message: '已退出登录' });
+});
+
+// 检查登录状态
+app.get('/api/auth/status', (req, res) => {
+  const token = req.cookies?.sessionToken || req.headers['x-session-token'];
+  const isAuthenticated = !authPassword || validateSession(token);
+  res.json({ 
+    isAuthenticated,
+    requiresAuth: Boolean(authPassword),
+    hasPassword: Boolean(authPassword)
+  });
+});
+
+// 保护敏感API
+app.get('/api/state', requireAuth, (_req, res) => {
   res.json(state);
 });
 
-app.get('/api/config', (_req, res) => {
+app.get('/api/config', requireAuth, (_req, res) => {
   res.json({
     broker: mqttUrl,
     topics: mqttTopics,
@@ -566,6 +662,16 @@ client.on('error', (error) => {
 });
 
 io.on('connection', (socket) => {
+  // 检查认证
+  const handshake = socket.handshake;
+  const token = handshake.auth?.token || handshake.query?.token;
+  
+  if (authPassword && !validateSession(token)) {
+    socket.emit('unauthorized', { message: '需要登录' });
+    socket.disconnect();
+    return;
+  }
+  
   socket.emit('bootstrap', state);
 });
 

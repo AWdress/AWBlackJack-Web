@@ -519,6 +519,8 @@ client.on('message', (topic, payloadBuffer) => {
   } catch {
   }
 
+  console.log(`[MQTT] Received on ${topic}: ${payloadText.substring(0, 200)}${payloadText.length > 200 ? '...' : ''}`);
+
   const normalized = normalizePayload(topic, payload);
 
   const message = {

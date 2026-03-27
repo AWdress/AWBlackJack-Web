@@ -382,9 +382,9 @@ const updateTableState = (topic, payload, receivedAt) => {
     table.hand = payload.hand ?? payload.round ?? table.hand;
 
     if (['friend_state', 'friend_help_request', 'friend_helped', 'friend_help_verify_request', 'friend_help_verify_result', 'friend_started_game', 'friend_joined'].includes(payload.type)) {
-      const senderId = payload.sender_id ?? payload.senderId ?? '-';
+      const senderId = payload.sender_id ?? payload.senderId ?? payload.sender ?? payload.sender_id ?? '-';
       const friendName = payload.friend_name || payload.friendName || `队友${senderId}`;
-      const waiting = payload.waiting;
+      const waiting = payload.waiting ?? payload.is_waiting ?? payload.isWaiting;
       const statusText = payload.type === 'friend_help_request'
         ? '请求平局'
         : payload.type === 'friend_helped'
@@ -408,10 +408,10 @@ const updateTableState = (topic, payload, receivedAt) => {
         name: friendName,
         status: statusText,
         waiting: waiting === true,
-        gameId: payload.target_gameid || payload.gameid || '-',
-        amount: payload.amount ?? '-',
-        point: payload.point ?? '-',
-        source: payload.source || payload.requester_name || '-',
+        gameId: payload.target_gameid || payload.gameid || payload.gameId || '-',
+        amount: payload.amount ?? payload.bet ?? payload.wager ?? '-',
+        point: payload.point ?? payload.current_point ?? payload.currentPoint ?? '-',
+        source: payload.source || payload.requester_name || payload.requesterName || '-',
         updatedAt: receivedAt
       };
 

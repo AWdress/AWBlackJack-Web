@@ -9,7 +9,18 @@
       
       <form @submit.prevent="handleLogin" class="login-form">
         <div class="form-group">
-          <label for="password">访问密码</label>
+          <label for="username">用户名</label>
+          <input
+            id="username"
+            v-model="username"
+            type="text"
+            placeholder="请输入用户名"
+            :disabled="loading"
+            required
+          />
+        </div>
+        <div class="form-group">
+          <label for="password">密码</label>
           <input
             id="password"
             v-model="password"
@@ -42,6 +53,7 @@ import { ref, onMounted } from 'vue'
 
 const emits = defineEmits(['login-success'])
 
+const username = ref('')
 const password = ref('')
 const loading = ref(false)
 const errorMessage = ref('')
@@ -63,7 +75,7 @@ const checkAuthStatus = async () => {
 }
 
 const handleLogin = async () => {
-  if (!password.value.trim()) return
+  if (!username.value.trim() || !password.value.trim()) return
   
   loading.value = true
   errorMessage.value = ''
@@ -74,7 +86,10 @@ const handleLogin = async () => {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ password: password.value })
+      body: JSON.stringify({ 
+        username: username.value,
+        password: password.value 
+      })
     })
     
     const data = await response.json()

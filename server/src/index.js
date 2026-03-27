@@ -29,6 +29,7 @@ const mqttClientId = process.env.MQTT_CLIENT_ID || `awbj_web_${Math.random().toS
 const timeZone = process.env.TIME_ZONE || 'Asia/Shanghai';
 const authPassword = process.env.AUTH_PASSWORD || null;
 const sessionSecret = process.env.SESSION_SECRET || 'awblackjack-web-secret-change-in-production';
+const AUTH_USERS = process.env.AUTH_USERS || ''; // 格式：用户名:密码,用户名:密码
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const webDistPath = path.resolve(__dirname, '../../web/dist');
@@ -80,9 +81,33 @@ const validateSession = (token) => {
   return true;
 };
 
+// 解析用户配置
+const parseUsers = () => {
+  const users = {};
+  if (AUTH_USERS) {
+    const userPairs = AUTH_USERS.split(',').map(pair => pair.trim()).filter(Boolean);
+    userPairs.forEach(pair => {
+      const [username, password] = pair.split(':').map(s => s.trim());
+      if (username && password) {
+        users[username] = password;
+      }
+    });
+  }
+  
+  // 向后兼容：如果设置了单一密码，创建一个默认用户
+  if (authPassword && Object.keys(users).length === 0) {
+    users['admin'] = authPassword;
+  }
+  
+  return users;
+};
+
+const validUsers = parseUsers();
+const requiresAuth = Object.keys(validUsers).length > 0;
+
 const requireAuth = (req, res, next) => {
-  if (!authPassword) {
-    // 没有设置密码时，直接放行
+  if (!requiresAuth) {
+    // 没有设置用户时，直接放行
     return next();
   }
   
@@ -131,15 +156,22 @@ app.get('/api/health', (_req, res) => {
 
 // 登录API
 app.post('/api/login', (req, res) => {
-  if (!authPassword) {
+  if (!requiresAuth) {
     return res.json({ 
       success: true, 
-      message: '系统未设置密码，直接访问' 
+      message: '系统未设置认证，直接访问' 
     });
   }
   
-  const { password } = req.body;
-  if (password === authPassword) {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ 
+      success: false, 
+      message: '需要用户名和密码' 
+    });
+  }
+  
+  if (validUsers[username] === password) {
     const token = createSession();
     res.cookie('sessionToken', token, { 
       httpOnly: true,
@@ -149,13 +181,14 @@ app.post('/api/login', (req, res) => {
     return res.json({ 
       success: true, 
       message: '登录成功',
-      token 
+      token,
+      username
     });
   }
   
   res.status(401).json({ 
     success: false, 
-    message: '密码错误' 
+    message: '用户名或密码错误' 
   });
 });
 
@@ -172,11 +205,12 @@ app.post('/api/logout', (req, res) => {
 // 检查登录状态
 app.get('/api/auth/status', (req, res) => {
   const token = req.cookies?.sessionToken || req.headers['x-session-token'];
-  const isAuthenticated = !authPassword || validateSession(token);
+  const isAuthenticated = !requiresAuth || validateSession(token);
   res.json({ 
     isAuthenticated,
-    requiresAuth: Boolean(authPassword),
-    hasPassword: Boolean(authPassword)
+    requiresAuth,
+    hasUsers: requiresAuth,
+    userCount: Object.keys(validUsers).length
   });
 });
 

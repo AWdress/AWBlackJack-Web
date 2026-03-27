@@ -68,25 +68,34 @@ VITE_SERVER_URL=http://localhost:3001
 ## 登录保护
 
 ### 启用登录保护
-要启用登录保护，只需在 `server/.env` 中设置 `AUTH_PASSWORD` 环境变量：
+要启用登录保护，可以在 `server/.env` 中设置用户认证：
 
+#### 1. 单一密码模式（向后兼容）
 ```env
 AUTH_PASSWORD=your-secure-password-here
 ```
+使用此模式时，默认用户名是 `admin`。
+
+#### 2. 多用户模式
+```env
+AUTH_USERS=admin:admin123,user:user123,viewer:viewer456
+```
+格式：`用户名:密码,用户名:密码`
 
 ### 登录流程
-1. 当 `AUTH_PASSWORD` 被设置后，访问界面会显示登录页面
-2. 输入正确的密码后进入系统
+1. 当设置了认证后，访问界面会显示登录页面
+2. 输入正确的用户名和密码后进入系统
 3. 会话有效期为24小时
 4. 点击"退出登录"可立即结束会话
 
-### 无密码访问
-如果不设置 `AUTH_PASSWORD`，系统将直接开放访问，无需登录。
+### 无认证访问
+如果不设置任何认证配置（不设 `AUTH_PASSWORD` 和 `AUTH_USERS`），系统将直接开放访问，无需登录。
 
 ### 安全性说明
-- 密码通过HTTP cookie存储（httpOnly标志）
+- 认证信息通过HTTP cookie存储（httpOnly标志）
 - 会话在服务器内存中管理
 - 建议在生产环境中设置强密码
+- 可以创建多个用户账号，分配不同权限（当前版本权限相同）
 
 ## 本地开发
 

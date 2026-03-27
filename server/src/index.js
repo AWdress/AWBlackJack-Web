@@ -255,12 +255,13 @@ const buildCollaborationEvent = (topic, payload, receivedAt) => {
   }
 
   if (topic === 'blackjack/states' && type === 'friend_state') {
+    const gameidDisplay = payload.gameid == null ? '无牌局' : payload.gameid || '-';
     return {
       topic,
       type,
       title: '队友状态',
       actor: friendName,
-      detail: `是否等待：${payload.waiting ? '是' : '否'} · 牌局编号：${payload.gameid || '-'}${payload.source ? ` · 状态来源：${payload.source}` : ''}`,
+      detail: `是否等待：${payload.waiting ? '是' : '否'} · 牌局状态：${gameidDisplay}${payload.source ? ` · 状态来源：${payload.source}` : ''}`,
       receivedAt,
       payload
     };
@@ -408,7 +409,7 @@ const updateTableState = (topic, payload, receivedAt) => {
         name: friendName,
         status: statusText,
         waiting: waiting === true,
-        gameId: payload.target_gameid || payload.gameid || payload.gameId || '-',
+        gameId: payload.target_gameid ?? payload.gameid ?? payload.gameId ?? '-',
         amount: payload.amount ?? payload.bet ?? payload.wager ?? '-',
         point: payload.point ?? payload.current_point ?? payload.currentPoint ?? '-',
         source: payload.source || payload.requester_name || payload.requesterName || '-',
@@ -420,7 +421,8 @@ const updateTableState = (topic, payload, receivedAt) => {
       nextTeammates.unshift(teammate);
       table.teammates = nextTeammates.slice(0, 12);
       table.stage = statusText;
-      table.roundId = teammate.gameId || table.roundId;
+      const validGameId = teammate.gameId && teammate.gameId !== '-' ? teammate.gameId : null;
+      table.roundId = validGameId || table.roundId;
       table.result = {
         friendName,
         status: statusText,

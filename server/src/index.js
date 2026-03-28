@@ -608,18 +608,23 @@ const updateTableState = (topic, payload, receivedAt) => {
         nextTeammates.splice(insertIndex, 0, teammate);
       }
       table.teammates = nextTeammates.slice(0, 12);
-      table.stage = statusText;
-      const validGameId = teammate.gameId && teammate.gameId !== '-' ? teammate.gameId : null;
-      table.roundId = validGameId || table.roundId;
-      table.result = {
-        friendName,
-        status: statusText,
-        gameId: teammate.gameId,
-        amount: teammate.amount,
-        point: teammate.point,
-        source: teammate.source,
-        updatedAt: teammate.updatedAt
-      };
+
+      // friend_state 是心跳包保消息，不覆盖活动事件产生的底层状态
+      const isMeaningfulEvent = payload.type !== 'friend_state';
+      if (isMeaningfulEvent) {
+        table.stage = statusText;
+        const validGameId = teammate.gameId && teammate.gameId !== '-' ? teammate.gameId : null;
+        table.roundId = validGameId || table.roundId;
+        table.result = {
+          friendName,
+          status: statusText,
+          gameId: teammate.gameId,
+          amount: teammate.amount,
+          point: teammate.point,
+          source: teammate.source,
+          updatedAt: teammate.updatedAt
+        };
+      }
     }
 
     const normalizedPlayers = normalizePlayers(payload);
@@ -732,7 +737,14 @@ client.on('message', (topic, payloadBuffer) => {
   state.messages.unshift(message);
   state.messages = state.messages.slice(0, 100);
 
-  io.emit('message', message);
+  // friend_state 无有效局号时不推送到前端（避免高频刺激前端拉取状态）
+  const isFriendStateNoGame = (
+    normalized.payload?.type === 'friend_state' &&
+    (normalized.payload?.gameid == null || normalized.payload?.gameid === '' || normalized.payload?.gameid === 0)
+  );
+  if (!isFriendStateNoGame) {
+    io.emit('message', message);
+  }
 });
 
 client.on('error', (error) => {

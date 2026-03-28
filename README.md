@@ -38,7 +38,6 @@ npm install
 复制以下文件并填写实际 MQTT 信息：
 
 - `server/.env.example` -> `server/.env`
-- `web/.env.example` -> `web/.env`
 
 `server/.env` 示例：
 
@@ -52,18 +51,22 @@ MQTT_CLIENT_ID=awblackjack_web_panel
 TIME_ZONE=Asia/Shanghai
 
 # 认证配置（可选）
-# 如果设置了 AUTH_PASSWORD，访问界面需要密码
+# 如果设置了用户认证，访问界面需要登录
+
+# 单一密码模式（向后兼容）
 # AUTH_PASSWORD=your-secure-password-here
+
+# 多用户模式（格式：用户名:密码,用户名:密码）
+# AUTH_USERS=admin:admin123,user:user123
 
 # 会话密钥（可选）
 # SESSION_SECRET=awblackjack-web-secret-change-in-production
 ```
 
-`web/.env` 示例：
-
-```env
-VITE_SERVER_URL=http://localhost:3001
-```
+> **前端配置说明**：
+> - 前端会自动使用当前域名访问后端 API
+> - 如需指定特定后端地址，可在开发时设置 `VITE_SERVER_URL` 环境变量
+> - 生产环境下无需额外配置
 
 ## 登录保护
 

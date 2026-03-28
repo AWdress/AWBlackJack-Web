@@ -32,7 +32,10 @@ $env:Path = "$(Resolve-Path .\.tools\node);" + $env:Path
 复制并编辑：
 
 - `server/.env.example` -> `server/.env`
-- `web/.env.example` -> `web/.env`
+
+> **前端配置说明**：
+> - 前端会自动使用当前域名访问后端 API
+> - 如需指定特定后端地址，可在开发时设置 `VITE_SERVER_URL` 环境变量
 
 ## 4. 启动服务端
 

@@ -624,6 +624,16 @@ const updateTableState = (topic, payload, receivedAt) => {
           source: teammate.source,
           updatedAt: teammate.updatedAt
         };
+        // friend_started_game / friend_help_request / friend_helped 携带的 point
+        // 是本局协同的核心点数，映射到庄家点数显示
+        const dealerRelevantTypes = ['friend_started_game', 'friend_help_request', 'friend_helped'];
+        if (dealerRelevantTypes.includes(payload.type) && rawPoint != null && rawPoint !== '-') {
+          table.dealer = {
+            ...table.dealer,
+            points: rawPoint,
+            status: statusText
+          };
+        }
       }
     }
 
@@ -641,11 +651,17 @@ const updateTableState = (topic, payload, receivedAt) => {
     }
 
     if (topic === 'blackjack/states') {
-      table.dealer = {
-        cards: payload.bankerCards || payload.dealerCards || table.dealer.cards,
-        points: payload.bankerPoints ?? payload.dealerPoints ?? table.dealer.points,
-        status: payload.bankerStatus || payload.dealerStatus || table.dealer.status
-      };
+      // 仅当 payload 中明确包含庄家字段时才更新，避免 friend_state 心跳无意间清空点数
+      const hasDealerData = payload.bankerCards || payload.dealerCards ||
+        payload.bankerPoints != null || payload.dealerPoints != null ||
+        payload.bankerStatus || payload.dealerStatus;
+      if (hasDealerData) {
+        table.dealer = {
+          cards: payload.bankerCards || payload.dealerCards || table.dealer.cards,
+          points: payload.bankerPoints ?? payload.dealerPoints ?? table.dealer.points,
+          status: payload.bankerStatus || payload.dealerStatus || table.dealer.status
+        };
+      }
     }
 
     if (Array.isArray(payload.cards) || payload.points || payload.result) {
@@ -674,6 +690,7 @@ const client = mqtt.connect(mqttUrl, {
 });
 
 client.on('connect', () => {
+  console.log(`[MQTT] 已连接: ${mqttUrl}`);
   state.connected = true;
   mqttTopics.forEach((topic) => {
     client.subscribe(topic);
@@ -687,6 +704,7 @@ client.on('connect', () => {
 });
 
 client.on('reconnect', () => {
+  console.log(`[MQTT] 重连中: ${mqttUrl}`);
   state.connected = false;
   io.emit('status', {
     connected: false,
@@ -748,6 +766,7 @@ client.on('message', (topic, payloadBuffer) => {
 });
 
 client.on('error', (error) => {
+  console.error(`[MQTT] 连接错误: ${error.message}`);
   state.connected = false;
   pushError(error.message);
   io.emit('status', {

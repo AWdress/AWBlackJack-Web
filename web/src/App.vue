@@ -242,7 +242,9 @@ onMounted(() => {
     sessionToken.value = storedToken;
     isAuthenticated.value = true;
     checkingAuth.value = false;
-    // 静默检查认证状态，确保会话有效但不影响UI
+    // 立即初始化 Dashboard（建立 Socket 连接，接收 bootstrap 数据）
+    initDashboard();
+    // 静默核验会话有效性，失效时会自动跳回登录页
     checkAuthStatus(true);
   } else {
     // 没有token，正常检查认证状态

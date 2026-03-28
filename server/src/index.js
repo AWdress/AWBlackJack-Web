@@ -568,19 +568,34 @@ const updateTableState = (topic, payload, receivedAt) => {
                   ? '空闲'
                   : '状态同步';
 
+      // 查找当前已有的队友数据，用于保留有意义的旧字段值
+      const currentTeammates = Array.isArray(table.teammates) ? table.teammates : [];
+      const existingTeammate = currentTeammates.find(item => String(item.senderId) === String(senderId));
+
+      // 仅当新值有意义时才覆盖旧值（null/undefined/'-' 时保留旧值）
+      const keepBest = (newVal, oldVal) => {
+        if (newVal === null || newVal === undefined || newVal === '-' || newVal === '') {
+          return (oldVal !== null && oldVal !== undefined && oldVal !== '-' && oldVal !== '') ? oldVal : '-';
+        }
+        return newVal;
+      };
+
+      const rawGameId = payload.target_gameid ?? payload.gameid ?? payload.gameId;
+      const rawAmount = payload.amount ?? payload.bet ?? payload.wager;
+      const rawPoint  = payload.point ?? payload.current_point ?? payload.currentPoint;
+
       const teammate = {
         senderId,
         name: friendName,
         status: statusText,
         waiting: waiting === true,
-        gameId: payload.target_gameid ?? payload.gameid ?? payload.gameId ?? '-',
-        amount: payload.amount ?? payload.bet ?? payload.wager ?? '-',
-        point: payload.point ?? payload.current_point ?? payload.currentPoint ?? '-',
-        source: payload.source || payload.requester_name || payload.requesterName || '-',
+        gameId: keepBest(rawGameId, existingTeammate?.gameId),
+        amount: keepBest(rawAmount, existingTeammate?.amount),
+        point:  keepBest(rawPoint,  existingTeammate?.point),
+        source: payload.source || payload.requester_name || payload.requesterName || existingTeammate?.source || '-',
         updatedAt: receivedAt
       };
 
-      const currentTeammates = Array.isArray(table.teammates) ? table.teammates : [];
       let nextTeammates = currentTeammates.filter((item) => String(item.senderId) !== String(senderId));
       // 按 senderId 排序插入（字符串比较）
       const insertIndex = nextTeammates.findIndex((item) => String(item.senderId).localeCompare(String(senderId)) > 0);

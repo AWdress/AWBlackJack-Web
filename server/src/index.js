@@ -8,12 +8,16 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
+import { parse as parseCookie } from 'cookie';
+import { unsign } from 'cookie-signature';
+import { randomBytes } from 'crypto';
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*'
+    origin: true,
+    credentials: true
   }
 });
 
@@ -76,12 +80,12 @@ const getTimestamp = () => {
 const activeSessions = new Map();
 
 const generateSessionToken = () => {
-  return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  return randomBytes(32).toString('hex');
 };
 
 const createSession = (username) => {
   const token = generateSessionToken();
-  const expiresAt = Date.now() + 24 * 60 * 60 * 100; // 24小时
+  const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24小时
   activeSessions.set(token, { username, expiresAt });
   return token;
 };
@@ -103,7 +107,10 @@ const parseUsers = () => {
   if (AUTH_USERS) {
     const userPairs = AUTH_USERS.split(',').map(pair => pair.trim()).filter(Boolean);
     userPairs.forEach(pair => {
-      const [username, password] = pair.split(':').map(s => s.trim());
+      const colonIndex = pair.indexOf(':');
+      if (colonIndex === -1) return;
+      const username = pair.slice(0, colonIndex).trim();
+      const password = pair.slice(colonIndex + 1).trim();
       if (username && password) {
         users[username] = password;
       }
@@ -194,7 +201,7 @@ app.post('/api/login', (req, res) => {
       secure: process.env.NODE_ENV === 'production',
       signed: true,
       sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 100 // 24小时
+      maxAge: 24 * 60 * 60 * 1000 // 24小时
     });
     return res.json({ 
       success: true, 
@@ -477,7 +484,7 @@ const hydrateFromRuntimeState = () => {
         point: '-',
         source: '本地历史状态',
         updatedAt: friendState.updated_at
-          ? new Date(Number(friendState.updated_at) * 100).toISOString()
+          ? new Date(Number(friendState.updated_at) * 1000).toISOString()
           : fallbackUpdatedAt
       }));
 
@@ -724,23 +731,21 @@ client.on('error', (error) => {
 io.on('connection', (socket) => {
   // 检查认证
   const handshake = socket.handshake;
-  const token = handshake.auth?.token || handshake.query?.token;
-  
-  // 如果cookie存在且启用cookieParser，尝试从cookie解析
-  let cookieToken = token;
+  let cookieToken = handshake.auth?.token || handshake.query?.token;
+
   if (handshake.headers.cookie) {
     try {
-      // 简化：查找sessionToken cookie
-      const cookies = handshake.headers.cookie.split(';');
-      const sessionCookie = cookies.find(c => c.trim().startsWith('sessionToken='));
-      if (sessionCookie) {
-        // 可能是签名的cookie，格式为sessionToken=s:xxxx.yyy
-        const cookieStr = sessionCookie.split('=')[1];
-        // 如果是签名格式"s:xxxx.yyy"，提取xxxx部分
-        if (cookieStr.startsWith('s:')) {
-          cookieToken = cookieStr.substring(2).split('.')[0];
+      const cookies = parseCookie(handshake.headers.cookie);
+      const val = cookies.sessionToken;
+      if (val) {
+        if (val.startsWith('s:')) {
+          // 签名 cookie：验证签名并提取原始 token
+          const unsigned = unsign(val.slice(2), sessionSecret);
+          if (unsigned !== false) {
+            cookieToken = unsigned;
+          }
         } else {
-          cookieToken = cookieStr;
+          cookieToken = val;
         }
       }
     } catch (error) {

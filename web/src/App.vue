@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { io } from 'socket.io-client';
 import Login from './Login.vue';
 
@@ -16,7 +16,6 @@ const tables = ref({});
 const events = ref([]);
 const errorText = ref('');
 const sessionToken = ref(sessionStorage.getItem('awblackjack_session_token') || '');
-const currentUser = ref('');
 const isFreshLogin = ref(false);
 
 let socket;
@@ -56,7 +55,7 @@ const checkAuthStatus = (() => {
   let isChecking = false; // 闭包内的标志，防止并发检查
   
   return async (silent = false) => {
-    if (isChecking) return Promise.resolve(); // 如果已经在检查，跳过
+    if (isChecking) return Promise.resolve(null); // 如果已经在检查，跳过
     isChecking = true;
     if (!silent) {
       checkingAuth.value = true;
@@ -156,7 +155,7 @@ const handleLoginSuccess = async (token) => {
     // 等待认证状态检查完成
     const data = await checkAuthStatus();
     
-    if (data.isAuthenticated) {
+    if (data && data.isAuthenticated) {
       // 认证成功
       isAuthenticated.value = true;
       checkingAuth.value = false;

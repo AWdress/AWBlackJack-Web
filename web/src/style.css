@@ -567,65 +567,192 @@ body {
   .side-column {
     grid-template-columns: 1fr;
   }
+
+  .dealer-ring {
+    width: 180px;
+    height: 180px;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
 }
 
 @media (max-width: 768px) {
   .page {
-    padding: 20px 16px 32px;
+    padding: 16px 12px 32px;
   }
 
+  /* ===== Header ===== */
   .hero {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
+    gap: 12px;
   }
 
   .hero-brand {
     align-items: flex-start;
+    gap: 14px;
   }
 
   .hero-logo {
-    width: 140px;
-    height: 96px;
+    width: 100px;
+    height: 68px;
   }
 
   .hero h1 {
-    font-size: 1.85rem;
+    font-size: 1.45rem;
   }
 
+  .hero p {
+    font-size: 0.85rem;
+  }
+
+  .hero-controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: space-between;
+  }
+
+  .status {
+    font-size: 0.85rem;
+    padding: 8px 14px;
+  }
+
+  /* ===== 牌桌总览 - 改用 flexbox 垄列布局 ===== */
   .table-surface {
-    min-height: 320px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    min-height: auto;
+    padding: 28px 20px;
+    border-radius: 20px;
   }
 
   .table-center {
-    width: calc(100% - 48px);
-    top: 38%;
+    position: static;
+    transform: none;
+    left: auto;
+    top: auto;
+    width: 100%;
+    text-align: center;
+  }
+
+  .table-center h2 {
+    font-size: 1.5rem;
   }
 
   .dealer-ring {
-    position: absolute;
-    left: 50%;
+    position: static;
+    transform: none;
+    left: auto;
     right: auto;
-    bottom: 20px;
     top: auto;
-    transform: translateX(-50%);
-    width: 170px;
-    height: 170px;
+    bottom: auto;
+    width: 150px;
+    height: 150px;
+  }
+
+  .dealer-points {
+    font-size: 2.2rem;
+  }
+
+  .dealer-meta {
+    font-size: 0.8rem;
+    max-width: 120px;
+  }
+
+  /* ===== 概览卡片 ===== */
+  .summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .summary-card strong {
+    font-size: 1rem;
+  }
+
+  /* ===== 队友卡片 ===== */
+  .teammate-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .info-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* ===== 面板头部 ===== */
+  .panel-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ===== 时间轴 ===== */
+  .timeline-window {
+    height: 320px;
+  }
+
+  .timeline-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .round-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .teammate-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .page {
+    padding: 12px 10px 24px;
+  }
+
+  .hero h1 {
+    font-size: 1.2rem;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
   }
 
   .info-grid {
     grid-template-columns: 1fr;
   }
 
-  .timeline-window {
-    height: 360px;
+  .panel {
+    padding: 14px;
   }
 
-  .panel-header,
-  .timeline-head,
-  .round-row,
-  .teammate-footer {
-    flex-direction: column;
-    align-items: flex-start;
+  .teammate-card {
+    padding: 14px;
+  }
+
+  .table-surface {
+    padding: 22px 14px;
+  }
+
+  .dealer-ring {
+    width: 130px;
+    height: 130px;
+  }
+
+  .dealer-points {
+    font-size: 1.9rem;
+  }
+
+  .table-center h2 {
+    font-size: 1.3rem;
   }
 }
 .list {
@@ -665,14 +792,7 @@ body {
 }
 
 @media (max-width: 960px) {
-  .cards,
-  .layout {
+  .cards {
     grid-template-columns: 1fr;
-  }
-
-  .hero {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
   }
 }

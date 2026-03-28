@@ -725,7 +725,29 @@ io.on('connection', (socket) => {
   const handshake = socket.handshake;
   const token = handshake.auth?.token || handshake.query?.token;
   
-  if (requiresAuth && !validateSession(token)) {
+  // 如果cookie存在且启用cookieParser，尝试从cookie解析
+  let cookieToken = token;
+  if (handshake.headers.cookie) {
+    try {
+      // 简化：查找sessionToken cookie
+      const cookies = handshake.headers.cookie.split(';');
+      const sessionCookie = cookies.find(c => c.trim().startsWith('sessionToken='));
+      if (sessionCookie) {
+        // 可能是签名的cookie，格式为sessionToken=s:xxxx.yyy
+        const cookieStr = sessionCookie.split('=')[1];
+        // 如果是签名格式"s:xxxx.yyy"，提取xxxx部分
+        if (cookieStr.startsWith('s:')) {
+          cookieToken = cookieStr.substring(2).split('.')[0];
+        } else {
+          cookieToken = cookieStr;
+        }
+      }
+    } catch (error) {
+      console.error('解析cookie失败:', error);
+    }
+  }
+  
+  if (requiresAuth && !validateSession(cookieToken)) {
     socket.emit('unauthorized', { message: '需要登录' });
     socket.disconnect();
     return;

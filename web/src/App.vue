@@ -15,7 +15,7 @@ const errors = ref([]);
 const tables = ref({});
 const events = ref([]);
 const errorText = ref('');
-const sessionToken = ref('');
+const sessionToken = ref(sessionStorage.getItem('awblackjack_session_token') || '');
 const currentUser = ref('');
 
 let socket;
@@ -51,31 +51,48 @@ const applyState = (state) => {
   events.value = state.events || [];
 };
 
-const checkAuthStatus = async () => {
-  checkingAuth.value = true;
-  try {
-    const response = await fetch(`${serverUrl}/api/auth/status`);
-    const data = await response.json();
-    
-    if (data.isAuthenticated) {
-      isAuthenticated.value = true;
-    } else {
-      isAuthenticated.value = false;
+const checkAuthStatus = (() => {
+  let isChecking = false; // 闭包内的标志，防止并发检查
+  
+  return async (silent = false) => {
+    if (isChecking) return; // 如果已经在检查，跳过
+    isChecking = true;
+    if (!silent) {
+      checkingAuth.value = true;
     }
-  } catch (error) {
-    console.error('检查认证状态失败:', error);
-    isAuthenticated.value = false;
-  } finally {
-    checkingAuth.value = false;
-  }
-};
+    try {
+      const response = await fetch(`${serverUrl}/api/auth/status`, {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      
+      if (data.isAuthenticated) {
+        isAuthenticated.value = true;
+      } else {
+        isAuthenticated.value = false;
+      }
+    } catch (error) {
+      console.error('检查认证状态失败:', error);
+      isAuthenticated.value = false;
+    } finally {
+      if (!silent) {
+        checkingAuth.value = false;
+      }
+      isChecking = false;
+    }
+  };
+})();
 
 const initSocketConnection = () => {
   if (socket) {
     socket.disconnect();
   }
 
-  const options = sessionToken.value ? { auth: { token: sessionToken.value }  } : {};
+  // Socket.IO会自动传递cookie，无需手动传token
+  const options = {
+    withCredentials: true,
+    transports: ['websocket', 'polling']
+  };
   socket = io(serverUrl, options);
 
   socket.on('connect_error', (error) => {
@@ -85,6 +102,7 @@ const initSocketConnection = () => {
   socket.on('unauthorized', (data) => {
     console.log('Socket未授权:', data);
     isAuthenticated.value = false;
+    checkingAuth.value = false;
     socket.disconnect();
   });
 
@@ -120,8 +138,18 @@ const initSocketConnection = () => {
   });
 };
 
-const handleLoginSuccess = () => {
+const handleLoginSuccess = (token) => {
+  if (token) {
+    sessionToken.value = token;
+  }
+  // 登录成功后立即设置为已认证，避免UI闪烁
   isAuthenticated.value = true;
+  checkingAuth.value = false;
+  
+  // 延迟一小段时间，确保cookie已设置，然后初始化dashboard
+  setTimeout(() => {
+    initDashboard();
+  }, 100);
 };
 
 const handleLogout = async () => {
@@ -136,6 +164,7 @@ const handleLogout = async () => {
   
   isAuthenticated.value = false;
   sessionToken.value = '';
+  sessionStorage.removeItem('awblackjack_session_token');
   if (socket) {
     socket.disconnect();
     socket = null;
@@ -143,29 +172,29 @@ const handleLogout = async () => {
 };
 
 const initDashboard = () => {
-  checkAuthStatus().then(() => {
-    if (!isAuthenticated.value) return;
-    
-    fetch(`${serverUrl}/api/state`, {
-      credentials: 'include'
+  // 不需要再次检查认证状态，因为isAuthenticated已经为true
+  fetch(`${serverUrl}/api/state`, {
+    credentials: 'include'
+  })
+    .then((response) => {
+      if (response.status === 401) {
+        // 会话可能已过期，清除本地存储
+        isAuthenticated.value = false;
+        sessionToken.value = '';
+        sessionStorage.removeItem('awblackjack_session_token');
+        return null;
+      }
+      return response.json();
     })
-      .then((response) => {
-        if (response.status === 401) {
-          isAuthenticated.value = false;
-          return null;
-        }
-        return response.json();
-      })
-      .then((state) => {
-        if (state) {
-          applyState(state);
-          initSocketConnection();
-        }
-      })
-      .catch((error) => {
-        console.error('初始化失败:', error);
-      });
-  });
+    .then((state) => {
+      if (state) {
+        applyState(state);
+        initSocketConnection();
+      }
+    })
+    .catch((error) => {
+      console.error('初始化失败:', error);
+    });
 };
 
 watch(isAuthenticated, (newValue) => {
@@ -175,7 +204,18 @@ watch(isAuthenticated, (newValue) => {
 });
 
 onMounted(() => {
-  checkAuthStatus();
+  // 如果sessionStorage中有token，先设置为已认证，避免UI闪烁
+  const storedToken = sessionStorage.getItem('awblackjack_session_token');
+  if (storedToken) {
+    sessionToken.value = storedToken;
+    isAuthenticated.value = true;
+    checkingAuth.value = false;
+    // 静默检查认证状态，确保会话有效但不影响UI
+    checkAuthStatus(true);
+  } else {
+    // 没有token，正常检查认证状态
+    checkAuthStatus();
+  }
 });
 
 onUnmounted(() => {

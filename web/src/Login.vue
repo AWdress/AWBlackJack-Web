@@ -99,7 +99,11 @@ const handleLogin = async () => {
     const data = await response.json()
     
     if (response.ok && data.success) {
-      emits('login-success')
+      // 存储token到sessionStorage，供Socket连接使用
+      if (data.token) {
+        sessionStorage.setItem('awblackjack_session_token', data.token);
+      }
+      emits('login-success', data.token)
     } else {
       errorMessage.value = data.message || '登录失败'
     }

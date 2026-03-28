@@ -583,7 +583,7 @@ const updateTableState = (topic, payload, receivedAt) => {
         return newVal;
       };
 
-      const rawGameId = payload.target_gameid ?? payload.gameid ?? payload.gameId;
+      const rawGameId = payload.gameid ?? payload.helper_gameid ?? payload.target_gameid ?? payload.gameId;
       const rawAmount = payload.amount ?? payload.bet ?? payload.wager;
       const rawPoint  = payload.point ?? payload.current_point ?? payload.currentPoint;
 
@@ -595,7 +595,7 @@ const updateTableState = (topic, payload, receivedAt) => {
         gameId: keepBest(rawGameId, existingTeammate?.gameId),
         amount: keepBest(rawAmount, existingTeammate?.amount),
         point:  keepBest(rawPoint,  existingTeammate?.point),
-        source: payload.source || payload.requester_name || payload.requesterName || existingTeammate?.source || '-',
+        source: payload.source || existingTeammate?.source || '-',
         updatedAt: receivedAt
       };
 

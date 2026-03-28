@@ -384,7 +384,6 @@ onUnmounted(() => {
 
             <div class="teammate-footer">
               <span>最近更新：{{ formatTime(item.updatedAt) }}</span>
-              <span>状态来源：{{ formatValue(item.source) }}</span>
             </div>
           </article>
         </div>

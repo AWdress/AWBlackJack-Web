@@ -60,20 +60,37 @@ const loading = ref(false)
 const errorMessage = ref('')
 const requiresAuth = ref(false)
 
+let isCheckingAuth = false;
+
 const checkAuthStatus = async () => {
+  // 防止并发调用
+  if (isCheckingAuth) return;
+  isCheckingAuth = true;
+  
   try {
+    console.log('开始检查认证状态...');
     const response = await fetch(`${serverUrl}/api/auth/status`, {
       credentials: 'include'
     })
+    // 如果响应失败，抛出错误
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
     const data = await response.json()
+    console.log('认证状态响应:', data);
     requiresAuth.value = data.requiresAuth
     
     // 如果已登录或不需要认证，直接跳转
     if (data.isAuthenticated) {
+      console.log('用户已登录，触发登录成功事件');
       emits('login-success')
     }
   } catch (error) {
     console.error('检查认证状态失败:', error)
+    // 即使API调用失败，也假设需要认证
+    requiresAuth.value = true;
+  } finally {
+    isCheckingAuth = false;
   }
 }
 

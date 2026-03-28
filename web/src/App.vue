@@ -113,6 +113,14 @@ const initSocketConnection = () => {
     applyState(statePayload);
   });
 
+  socket.on('reconnect', () => {
+    // 服务器重启后重连，内存状态已重置，重新拉取最新状态
+    fetch(`${serverUrl}/api/state`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((state) => { if (state) applyState(state); })
+      .catch(() => {});
+  });
+
   socket.on('status', (status) => {
     connected.value = Boolean(status.connected);
     broker.value = status.broker || broker.value;

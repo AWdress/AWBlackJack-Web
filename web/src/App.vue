@@ -75,7 +75,7 @@ const initSocketConnection = () => {
     socket.disconnect();
   }
 
-  const options = sessionToken.value ? { auth: { token: sessionToken.value } : {};
+  const options = sessionToken.value ? { auth: { token: sessionToken.value }  } : {};
   socket = io(serverUrl, options);
 
   socket.on('connect_error', (error) => {

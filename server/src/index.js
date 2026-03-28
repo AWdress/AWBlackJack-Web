@@ -63,10 +63,10 @@ const generateSessionToken = () => {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
 };
 
-const createSession = () => {
+const createSession = (username) => {
   const token = generateSessionToken();
   const expiresAt = Date.now() + 24 * 60 * 60 * 100; // 24小时
-  activeSessions.set(token, { expiresAt });
+  activeSessions.set(token, { username, expiresAt });
   return token;
 };
 
@@ -111,7 +111,7 @@ const requireAuth = (req, res, next) => {
     return next();
   }
   
-  const token = req.cookies?.sessionToken || req.headers['x-session-token'];
+  const token = req.signedCookies?.sessionToken || req.cookies?.sessionToken || req.headers['x-session-token'];
   if (validateSession(token)) {
     return next();
   }
@@ -147,7 +147,7 @@ const upsertEvent = (event) => {
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
-app.use(cookieParser());
+app.use(cookieParser(sessionSecret));
 
 // 公开的健康检查
 app.get('/api/health', (_req, res) => {
@@ -172,10 +172,11 @@ app.post('/api/login', (req, res) => {
   }
   
   if (validUsers[username] === password) {
-    const token = createSession();
+    const token = createSession(username);
     res.cookie('sessionToken', token, { 
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
+      signed: true,
       maxAge: 24 * 60 * 60 * 100 // 24小时
     });
     return res.json({ 
@@ -194,7 +195,7 @@ app.post('/api/login', (req, res) => {
 
 // 登出API
 app.post('/api/logout', (req, res) => {
-  const token = req.cookies?.sessionToken || req.headers['x-session-token'];
+  const token = req.signedCookies?.sessionToken || req.cookies?.sessionToken || req.headers['x-session-token'];
   if (token) {
     activeSessions.delete(token);
   }
@@ -204,13 +205,21 @@ app.post('/api/logout', (req, res) => {
 
 // 检查登录状态
 app.get('/api/auth/status', (req, res) => {
-  const token = req.cookies?.sessionToken || req.headers['x-session-token'];
+  const token = req.signedCookies?.sessionToken || req.cookies?.sessionToken || req.headers['x-session-token'];
   const isAuthenticated = !requiresAuth || validateSession(token);
+  let username = null;
+  if (isAuthenticated && token) {
+    const session = activeSessions.get(token);
+    if (session) {
+      username = session.username;
+    }
+  }
   res.json({ 
     isAuthenticated,
     requiresAuth,
     hasUsers: requiresAuth,
-    userCount: Object.keys(validUsers).length
+    userCount: Object.keys(validUsers).length,
+    username
   });
 });
 
@@ -700,7 +709,7 @@ io.on('connection', (socket) => {
   const handshake = socket.handshake;
   const token = handshake.auth?.token || handshake.query?.token;
   
-  if (authPassword && !validateSession(token)) {
+  if (requiresAuth && !validateSession(token)) {
     socket.emit('unauthorized', { message: '需要登录' });
     socket.disconnect();
     return;

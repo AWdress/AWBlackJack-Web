@@ -53,6 +53,7 @@ import { ref, onMounted } from 'vue'
 
 const emits = defineEmits(['login-success'])
 
+const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
 const username = ref('')
 const password = ref('')
 const loading = ref(false)
@@ -61,7 +62,9 @@ const requiresAuth = ref(false)
 
 const checkAuthStatus = async () => {
   try {
-    const response = await fetch('/api/auth/status')
+    const response = await fetch(`${serverUrl}/api/auth/status`, {
+      credentials: 'include'
+    })
     const data = await response.json()
     requiresAuth.value = data.requiresAuth
     
@@ -81,11 +84,12 @@ const handleLogin = async () => {
   errorMessage.value = ''
   
   try {
-    const response = await fetch('/api/login', {
+    const response = await fetch(`${serverUrl}/api/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
+      credentials: 'include',
       body: JSON.stringify({ 
         username: username.value,
         password: password.value 

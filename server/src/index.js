@@ -345,7 +345,54 @@ const buildCollaborationEvent = (topic, payload, receivedAt) => {
   const type = payload.type || '';
   const friendName = payload.friend_name || payload.friendName || (payload.sender_id ? `队友${payload.sender_id}` : '队友');
 
-  // 只记录"队友开局"事件
+  if (topic === 'blackjack/help' && type === 'friend_help_request') {
+    return {
+      topic,
+      type,
+      title: '平局求助',
+      actor: friendName,
+      detail: `牌局编号：${payload.gameid || '-'} · 下注金额：${payload.amount ?? '-'} · 当前点数：${payload.point ?? '-'}`,
+      receivedAt,
+      payload
+    };
+  }
+
+  if (topic === 'blackjack/games' && type === 'friend_helped') {
+    return {
+      topic,
+      type,
+      title: '平局完成',
+      actor: friendName,
+      detail: `目标牌局：${payload.target_gameid || payload.gameid || '-'} · 当前点数：${payload.point ?? '-'}`,
+      receivedAt,
+      payload
+    };
+  }
+
+  if (topic === 'blackjack/games' && type === 'friend_help_verify_request') {
+    return {
+      topic,
+      type,
+      title: '平局验证请求',
+      actor: friendName,
+      detail: `目标牌局：${payload.target_gameid || '-'} · 验证点数：${payload.point ?? '-'} · 尝试次数：${payload.attempt ?? '-'}`,
+      receivedAt,
+      payload
+    };
+  }
+
+  if (topic === 'blackjack/games' && type === 'friend_help_verify_result') {
+    return {
+      topic,
+      type,
+      title: '平局验证结果',
+      actor: friendName,
+      detail: `目标牌局：${payload.target_gameid || '-'} · 牌局仍存在：${payload.target_still_exists ? '是' : '否'} · 当前点数：${payload.point ?? '-'}`,
+      receivedAt,
+      payload
+    };
+  }
+
   if (topic === 'blackjack/games' && type === 'friend_started_game') {
     return {
       topic,
@@ -353,6 +400,35 @@ const buildCollaborationEvent = (topic, payload, receivedAt) => {
       title: '队友开局',
       actor: friendName,
       detail: `牌局编号：${payload.gameid || '-'} · 下注金额：${payload.amount ?? '-'} · 当前点数：${payload.point ?? '-'}`,
+      receivedAt,
+      payload
+    };
+  }
+
+  if (topic === 'blackjack/games' && type === 'friend_joined') {
+    return {
+      topic,
+      type,
+      title: '队友加入',
+      actor: friendName,
+      detail: `牌局编号：${payload.gameid || '-'}，已加入目标牌局`,
+      receivedAt,
+      payload
+    };
+  }
+
+  if (topic === 'blackjack/states' && type === 'friend_state') {
+    // 没有有效牌局号的纯等待状态无意义，不产生动态条目
+    if (payload.gameid == null || payload.gameid === '' || payload.gameid === 0) {
+      return null;
+    }
+    const statusText = payload.waiting ? '等待中' : '空闲';
+    return {
+      topic,
+      type,
+      title: '队友状态',
+      actor: friendName,
+      detail: `${statusText} · 牌局：${payload.gameid}${payload.source ? ` · 来源：${payload.source}` : ''}`,
       receivedAt,
       payload
     };

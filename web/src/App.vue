@@ -23,9 +23,11 @@ let socket;
 const tableEntries = computed(() => Object.values(tables.value));
 const primaryTable = computed(() => tableEntries.value[0] || null);
 const teammateEntries = computed(() => primaryTable.value?.teammates || []);
-const teammateCount = computed(() => teammateEntries.value.length);
-const waitingCount = computed(() => teammateEntries.value.filter((item) => item.waiting).length);
-const idleCount = computed(() => teammateEntries.value.filter((item) => !item.waiting).length);
+// 队友状态总览只展示「已开局」的队友
+const activeTeammateEntries = computed(() => teammateEntries.value.filter((item) => item.status === '已开局'));
+const teammateCount = computed(() => activeTeammateEntries.value.length);
+const waitingCount = computed(() => activeTeammateEntries.value.filter((item) => item.waiting).length);
+const idleCount = computed(() => activeTeammateEntries.value.filter((item) => !item.waiting).length);
 const latestEvent = computed(() => events.value[0] || null);
 const dealerPoints = computed(() => formatValue(primaryTable.value?.dealer?.points));
 const tableStage = computed(() => primaryTable.value?.stage || '等待牌局开始');
@@ -345,8 +347,8 @@ onUnmounted(() => {
           <span class="panel-tag">{{ teammateCount }} 人</span>
         </div>
 
-        <div v-if="teammateEntries.length" class="teammate-grid">
-          <article v-for="item in teammateEntries" :key="`${item.senderId}-${item.updatedAt}`" class="teammate-card">
+        <div v-if="activeTeammateEntries.length" class="teammate-grid">
+          <article v-for="item in activeTeammateEntries" :key="`${item.senderId}-${item.updatedAt}`" class="teammate-card">
             <div class="teammate-head">
               <div>
                 <h3>{{ item.name || `队友${item.senderId}` }}</h3>

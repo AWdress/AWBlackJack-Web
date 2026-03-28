@@ -418,14 +418,17 @@ const buildCollaborationEvent = (topic, payload, receivedAt) => {
   }
 
   if (topic === 'blackjack/states' && type === 'friend_state') {
-    const gameidDisplay = payload.gameid == null ? '无' : payload.gameid || '-';
+    // 没有有效牌局号的纯等待状态无意义，不产生动态条目
+    if (payload.gameid == null || payload.gameid === '' || payload.gameid === 0) {
+      return null;
+    }
     const statusText = payload.waiting ? '等待中' : '空闲';
     return {
       topic,
       type,
       title: '队友状态',
       actor: friendName,
-      detail: `${statusText} · 牌局：${gameidDisplay}${payload.source ? ` · 来源：${payload.source}` : ''}`,
+      detail: `${statusText} · 牌局：${payload.gameid}${payload.source ? ` · 来源：${payload.source}` : ''}`,
       receivedAt,
       payload
     };

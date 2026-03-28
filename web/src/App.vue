@@ -23,8 +23,7 @@ let socket;
 const tableEntries = computed(() => Object.values(tables.value));
 const primaryTable = computed(() => tableEntries.value[0] || null);
 const teammateEntries = computed(() => primaryTable.value?.teammates || []);
-// 队友状态总览只展示「已开局」的队友
-const activeTeammateEntries = computed(() => teammateEntries.value.filter((item) => item.status === '已开局'));
+const activeTeammateEntries = computed(() => teammateEntries.value);
 const teammateCount = computed(() => activeTeammateEntries.value.length);
 const waitingCount = computed(() => activeTeammateEntries.value.filter((item) => item.waiting).length);
 const idleCount = computed(() => activeTeammateEntries.value.filter((item) => !item.waiting).length);

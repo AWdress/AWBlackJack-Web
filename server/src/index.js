@@ -28,8 +28,24 @@ const mqttTopics = (process.env.MQTT_TOPICS || 'blackjack/help,blackjack/games,b
 const mqttClientId = process.env.MQTT_CLIENT_ID || `awbj_web_${Math.random().toString(16).slice(2, 10)}`;
 const timeZone = process.env.TIME_ZONE || 'Asia/Shanghai';
 const authPassword = process.env.AUTH_PASSWORD || null;
-const sessionSecret = process.env.SESSION_SECRET || 'awblackjack-web-secret-change-in-production';
+let sessionSecret = process.env.SESSION_SECRET || 'awblackjack-web-secret-change-in-production';
 const AUTH_USERS = process.env.AUTH_USERS || ''; // 格式：用户名:密码,用户名:密码
+
+// 验证sessionSecret
+if (!sessionSecret || sessionSecret.trim() === '') {
+  console.warn('警告: SESSION_SECRET为空或无效，使用默认安全密钥');
+  sessionSecret = 'awblackjack-web-secret-change-in-production-' + Date.now();
+}
+
+// 输出启动配置
+console.log('=== AWBlackJack Web 启动配置 ===');
+console.log(`端口: ${port}`);
+console.log(`MQTT URL: ${mqttUrl}`);
+console.log(`MQTT 主题: ${mqttTopics.join(', ')}`);
+console.log(`时区: ${timeZone}`);
+console.log(`认证配置: ${authPassword ? '单一密码模式' : AUTH_USERS ? '多用户模式' : '无认证'}`);
+console.log(`会话密钥配置: ${sessionSecret.includes('awblackjack-web-secret-change-in-production') ? '使用默认值' : '自定义配置'}`);
+console.log('================================');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const webDistPath = path.resolve(__dirname, '../../web/dist');
@@ -723,6 +739,24 @@ if (fs.existsSync(webDistPath)) {
     res.sendFile(path.join(webDistPath, 'index.html'));
   });
 }
+
+// 全局错误处理
+process.on('uncaughtException', (error) => {
+  console.error('未捕获的异常:', error.message);
+  console.error('错误堆栈:', error.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('未处理的Promise拒绝:', reason);
+});
+
+// 服务器错误处理
+server.on('error', (error) => {
+  console.error('服务器错误:', error.message);
+  if (error.code === 'EADDRINUSE') {
+    console.error(`端口 ${port} 已被占用，请检查是否有其他服务正在运行`);
+  }
+});
 
 server.listen(port, () => {
   console.log(`AWBlackJack web server listening on ${port}`);

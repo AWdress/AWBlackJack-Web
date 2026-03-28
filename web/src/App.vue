@@ -17,6 +17,7 @@ const events = ref([]);
 const errorText = ref('');
 const sessionToken = ref(sessionStorage.getItem('awblackjack_session_token') || '');
 const currentUser = ref('');
+const isFreshLogin = ref(false);
 
 let socket;
 
@@ -55,7 +56,7 @@ const checkAuthStatus = (() => {
   let isChecking = false; // 闭包内的标志，防止并发检查
   
   return async (silent = false) => {
-    if (isChecking) return; // 如果已经在检查，跳过
+    if (isChecking) return Promise.resolve(); // 如果已经在检查，跳过
     isChecking = true;
     if (!silent) {
       checkingAuth.value = true;
@@ -71,9 +72,11 @@ const checkAuthStatus = (() => {
       } else {
         isAuthenticated.value = false;
       }
+      return data;
     } catch (error) {
       console.error('检查认证状态失败:', error);
       isAuthenticated.value = false;
+      throw error;
     } finally {
       if (!silent) {
         checkingAuth.value = false;
@@ -138,18 +141,41 @@ const initSocketConnection = () => {
   });
 };
 
-const handleLoginSuccess = (token) => {
+const handleLoginSuccess = async (token) => {
   if (token) {
     sessionToken.value = token;
   }
-  // 登录成功后立即设置为已认证，避免UI闪烁
-  isAuthenticated.value = true;
-  checkingAuth.value = false;
   
-  // 延迟一小段时间，确保cookie已设置，然后初始化dashboard
-  setTimeout(() => {
-    initDashboard();
-  }, 100);
+  // 标记为刚登录状态
+  isFreshLogin.value = true;
+  
+  // 显示加载状态
+  checkingAuth.value = true;
+  
+  try {
+    // 等待认证状态检查完成
+    const data = await checkAuthStatus();
+    
+    if (data.isAuthenticated) {
+      // 认证成功
+      isAuthenticated.value = true;
+      checkingAuth.value = false;
+      // 立即初始化dashboard
+      initDashboard();
+    } else {
+      // 认证失败，但已经登录了，可能是cookie问题
+      console.error('登录后认证检查失败');
+      checkingAuth.value = false;
+      // 可以显示错误消息，但保持登录界面
+      isAuthenticated.value = false;
+      isFreshLogin.value = false;
+    }
+  } catch (error) {
+    console.error('登录确认失败:', error);
+    checkingAuth.value = false;
+    isAuthenticated.value = false;
+    isFreshLogin.value = false;
+  }
 };
 
 const handleLogout = async () => {
@@ -165,6 +191,7 @@ const handleLogout = async () => {
   isAuthenticated.value = false;
   sessionToken.value = '';
   sessionStorage.removeItem('awblackjack_session_token');
+  isFreshLogin.value = false;
   if (socket) {
     socket.disconnect();
     socket = null;
@@ -172,36 +199,42 @@ const handleLogout = async () => {
 };
 
 const initDashboard = () => {
-  // 不需要再次检查认证状态，因为isAuthenticated已经为true
+  // 保存当前是否为新鲜登录状态，然后重置标志
+  const wasFreshLogin = isFreshLogin.value;
+  isFreshLogin.value = false;
+  
   fetch(`${serverUrl}/api/state`, {
     credentials: 'include'
   })
     .then((response) => {
       if (response.status === 401) {
-        // 会话可能已过期，清除本地存储
-        isAuthenticated.value = false;
-        sessionToken.value = '';
-        sessionStorage.removeItem('awblackjack_session_token');
+        // 状态API认证失败
+        if (wasFreshLogin) {
+          console.warn('刚登录后状态API返回401，可能是cookie同步延迟');
+        } else {
+          console.warn('状态API返回401，会话可能已过期');
+        }
+        // 仍然检查认证状态以更新UI
+        checkAuthStatus();
+        // 返回null，不获取状态数据
         return null;
       }
       return response.json();
     })
     .then((state) => {
+      // 无论是否获取到状态数据，都尝试初始化Socket连接
       if (state) {
         applyState(state);
-        initSocketConnection();
       }
+      // 始终尝试连接Socket，它有自己的认证检查
+      initSocketConnection();
     })
     .catch((error) => {
       console.error('初始化失败:', error);
     });
 };
 
-watch(isAuthenticated, (newValue) => {
-  if (newValue) {
-    initDashboard();
-  }
-});
+
 
 onMounted(() => {
   // 如果sessionStorage中有token，先设置为已认证，避免UI闪烁

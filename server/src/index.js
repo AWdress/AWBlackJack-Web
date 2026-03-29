@@ -422,7 +422,7 @@ const buildCollaborationEvent = (topic, payload, receivedAt) => {
     if (payload.gameid == null || payload.gameid === '' || payload.gameid === 0) {
       return null;
     }
-    const statusText = payload.waiting ? '等待中' : '空闲';
+    const statusText = payload.waiting ? '等待玩家' : '空闲';
     return {
       topic,
       type,
@@ -480,7 +480,7 @@ const hydrateFromRuntimeState = () => {
       .map(([senderId, friendState]) => ({
         senderId,
         name: `队友${senderId}`,
-        status: friendState.waiting ? '等待中' : '空闲',
+        status: friendState.waiting ? '等待玩家' : '空闲',
         waiting: Boolean(friendState.waiting),
         gameId: friendState.gameid || '-',
         amount: '-',
@@ -566,7 +566,7 @@ const updateTableState = (topic, payload, receivedAt) => {
             : payload.type === 'friend_joined'
               ? '已加入'
               : waiting === true
-                ? '等待中'
+                ? '等待玩家'
                 : waiting === false
                   ? '空闲'
                   : '状态同步';

@@ -23,7 +23,10 @@ let socket;
 const tableEntries = computed(() => Object.values(tables.value));
 const primaryTable = computed(() => tableEntries.value[0] || null);
 const teammateEntries = computed(() => primaryTable.value?.teammates || []);
-const activeTeammateEntries = computed(() => teammateEntries.value);
+const assistStatuses = new Set(['请求平局', '平局完成', '等待验证', '验证通过', '验证失败']);
+const activeTeammateEntries = computed(() => teammateEntries.value.filter(item => !assistStatuses.has(item.status)));
+const assistEventTypes = new Set(['friend_help_request', 'friend_helped', 'friend_help_verify_request', 'friend_help_verify_result']);
+const assistEvents = computed(() => events.value.filter(e => assistEventTypes.has(e.type)).slice(0, 8));
 const teammateCount = computed(() => activeTeammateEntries.value.length);
 const waitingCount = computed(() => activeTeammateEntries.value.filter((item) => item.waiting).length);
 const idleCount = computed(() => activeTeammateEntries.value.filter((item) => !item.waiting).length);
@@ -324,7 +327,7 @@ onUnmounted(() => {
       <article class="summary-card chip-card">
         <span class="summary-label">队友人数</span>
         <strong>{{ teammateCount }}</strong>
-        <small>等待中 {{ waitingCount }} 人，空闲 {{ idleCount }} 人</small>
+        <small>等待玩家 {{ waitingCount }} 人，空闲 {{ idleCount }} 人</small>
       </article>
 
       <article class="summary-card chip-card">
@@ -387,7 +390,7 @@ onUnmounted(() => {
               </div>
               <div class="info-item">
                 <span>等待状态</span>
-                <strong>{{ item.waiting ? '等待中' : '空闲' }}</strong>
+                <strong>{{ item.waiting ? '等待玩家' : '空闲' }}</strong>
               </div>
             </div>
 
@@ -397,6 +400,53 @@ onUnmounted(() => {
           </article>
         </div>
         <div v-else class="empty-box">暂无队友实时状态</div>
+      </section>
+
+      <section class="panel panel-wide" v-if="assistEvents.length">
+        <div class="panel-header">
+          <div>
+            <h2>平局协助记录</h2>
+            <p>本机参与平局协助的事件记录</p>
+          </div>
+          <span class="panel-tag">{{ assistEvents.length }} 条</span>
+        </div>
+        <div class="teammate-grid">
+          <article v-for="item in assistEvents" :key="`assist-${item.type}-${item.receivedAt}`" class="teammate-card">
+            <div class="teammate-head">
+              <div>
+                <h3>{{ item.actor }}</h3>
+                <p>{{ item.title }}</p>
+              </div>
+              <span class="status-pill idle">{{ item.title }}</span>
+            </div>
+            <div class="hand-strip">
+              <span class="mini-card">A</span>
+              <span class="mini-card">10</span>
+              <span class="hand-text">当前点数 {{ formatValue(item.payload?.point) }}</span>
+            </div>
+            <div class="info-grid">
+              <div class="info-item">
+                <span>目标局号</span>
+                <strong>{{ formatValue(item.payload?.target_gameid || item.payload?.gameid) }}</strong>
+              </div>
+              <div class="info-item">
+                <span>下注金额</span>
+                <strong>{{ formatValue(item.payload?.amount) }}</strong>
+              </div>
+              <div class="info-item">
+                <span>协助点数</span>
+                <strong>{{ formatValue(item.payload?.point) }}</strong>
+              </div>
+              <div class="info-item">
+                <span>结果</span>
+                <strong>{{ item.title }}</strong>
+              </div>
+            </div>
+            <div class="teammate-footer">
+              <span>时间：{{ formatTime(item.receivedAt) }}</span>
+            </div>
+          </article>
+        </div>
       </section>
 
       <div class="side-column">

@@ -323,6 +323,24 @@ body {
   gap: 12px;
 }
 
+.assist-inline {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  background: rgba(212, 175, 55, 0.07);
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  border-radius: 8px;
+}
+
+.assist-inline-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  color: #d4af37;
+  gap: 8px;
+}
+
 .teammate-head {
   align-items: flex-start;
   margin-bottom: 14px;

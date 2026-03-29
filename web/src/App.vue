@@ -26,7 +26,15 @@ const teammateEntries = computed(() => primaryTable.value?.teammates || []);
 const assistStatuses = new Set(['请求平局', '平局完成', '等待验证', '验证通过', '验证失败']);
 const activeTeammateEntries = computed(() => teammateEntries.value.filter(item => !assistStatuses.has(item.status)));
 const assistEventTypes = new Set(['friend_help_request', 'friend_helped', 'friend_help_verify_request', 'friend_help_verify_result']);
-const assistEvents = computed(() => events.value.filter(e => assistEventTypes.has(e.type)).slice(0, 1));
+const latestAssistByTeammate = computed(() => {
+  const map = {};
+  for (const e of events.value) {
+    if (assistEventTypes.has(e.type) && !(e.actor in map)) {
+      map[e.actor] = e;
+    }
+  }
+  return map;
+});
 const teammateCount = computed(() => activeTeammateEntries.value.length);
 const waitingCount = computed(() => activeTeammateEntries.value.filter((item) => item.waiting).length);
 const idleCount = computed(() => activeTeammateEntries.value.filter((item) => !item.waiting).length);
@@ -394,59 +402,39 @@ onUnmounted(() => {
               </div>
             </div>
 
+            <template v-if="latestAssistByTeammate[item.name]">
+              <div class="assist-inline">
+                <div class="assist-inline-head">
+                  <span>&#x1F91D; {{ latestAssistByTeammate[item.name].title }}</span>
+                  <span>{{ formatTime(latestAssistByTeammate[item.name].receivedAt) }}</span>
+                </div>
+                <div class="info-grid">
+                  <div class="info-item">
+                    <span>目标局号</span>
+                    <strong>{{ formatValue(latestAssistByTeammate[item.name].payload?.target_gameid || latestAssistByTeammate[item.name].payload?.gameid) }}</strong>
+                  </div>
+                  <div class="info-item">
+                    <span>下注金额</span>
+                    <strong>{{ formatValue(latestAssistByTeammate[item.name].payload?.amount) }}</strong>
+                  </div>
+                  <div class="info-item">
+                    <span>协助点数</span>
+                    <strong>{{ formatValue(latestAssistByTeammate[item.name].payload?.point) }}</strong>
+                  </div>
+                  <div class="info-item">
+                    <span>结果</span>
+                    <strong>{{ latestAssistByTeammate[item.name].title }}</strong>
+                  </div>
+                </div>
+              </div>
+            </template>
+
             <div class="teammate-footer">
               <span>最近更新：{{ formatTime(item.updatedAt) }}</span>
             </div>
           </article>
         </div>
         <div v-else class="empty-box">暂无队友实时状态</div>
-      </section>
-
-      <section class="panel panel-wide" v-if="assistEvents.length">
-        <div class="panel-header">
-          <div>
-            <h2>平局协助记录</h2>
-            <p>本机参与平局协助的事件记录</p>
-          </div>
-          <span class="panel-tag">最新</span>
-        </div>
-        <div class="teammate-grid">
-          <article v-for="item in assistEvents" :key="`assist-${item.type}-${item.receivedAt}`" class="teammate-card">
-            <div class="teammate-head">
-              <div>
-                <h3>{{ item.actor }}</h3>
-                <p>{{ item.title }}</p>
-              </div>
-              <span class="status-pill idle">{{ item.title }}</span>
-            </div>
-            <div class="hand-strip">
-              <span class="mini-card">A</span>
-              <span class="mini-card">10</span>
-              <span class="hand-text">当前点数 {{ formatValue(item.payload?.point) }}</span>
-            </div>
-            <div class="info-grid">
-              <div class="info-item">
-                <span>目标局号</span>
-                <strong>{{ formatValue(item.payload?.target_gameid || item.payload?.gameid) }}</strong>
-              </div>
-              <div class="info-item">
-                <span>下注金额</span>
-                <strong>{{ formatValue(item.payload?.amount) }}</strong>
-              </div>
-              <div class="info-item">
-                <span>协助点数</span>
-                <strong>{{ formatValue(item.payload?.point) }}</strong>
-              </div>
-              <div class="info-item">
-                <span>结果</span>
-                <strong>{{ item.title }}</strong>
-              </div>
-            </div>
-            <div class="teammate-footer">
-              <span>时间：{{ formatTime(item.receivedAt) }}</span>
-            </div>
-          </article>
-        </div>
       </section>
 
       <div class="side-column">

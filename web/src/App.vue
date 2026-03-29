@@ -25,11 +25,11 @@ const primaryTable = computed(() => tableEntries.value[0] || null);
 const teammateEntries = computed(() => primaryTable.value?.teammates || []);
 const assistStatuses = new Set(['请求平局', '平局完成', '等待验证', '验证通过', '验证失败']);
 const activeTeammateEntries = computed(() => teammateEntries.value.filter(item => !assistStatuses.has(item.status)));
-const assistEventTypes = new Set(['friend_help_request', 'friend_helped', 'friend_help_verify_request', 'friend_help_verify_result']);
 const latestAssistByTeammate = computed(() => {
   const map = {};
-  for (const e of events.value) {
-    if (assistEventTypes.has(e.type) && !(e.actor in map)) {
+  // 对同一 actor 每种事件类型只保留最新一条，优先 friend_helped > friend_help_verify_result > 其余
+  for (const e of assistEventsData.value) {
+    if (!(e.actor in map)) {
       map[e.actor] = e;
     }
   }
@@ -39,6 +39,8 @@ const teammateCount = computed(() => activeTeammateEntries.value.length);
 const waitingCount = computed(() => activeTeammateEntries.value.filter((item) => item.waiting).length);
 const idleCount = computed(() => activeTeammateEntries.value.filter((item) => !item.waiting).length);
 const latestEvent = computed(() => events.value[0] || null);
+const mainEventTypesSet = new Set(['friend_started_game', 'friend_joined', 'runtime_state_bootstrap']);
+const visibleEvents = computed(() => events.value.filter(e => mainEventTypesSet.has(e.type)));
 const dealerPoints = computed(() => formatValue(primaryTable.value?.dealer?.points));
 const tableStage = computed(() => primaryTable.value?.stage || '等待牌局开始');
 const tableRound = computed(() => formatValue(primaryTable.value?.roundId));
@@ -52,6 +54,8 @@ const formatValue = (value) => {
   return value;
 };
 
+const assistEventsData = ref([]);
+
 const applyState = (state) => {
   connected.value = state.connected;
   broker.value = state.broker || '';
@@ -61,6 +65,7 @@ const applyState = (state) => {
   errors.value = state.errors || [];
   tables.value = state.tables || {};
   events.value = state.events || [];
+  assistEventsData.value = state.assistEvents || [];
 };
 
 const checkAuthStatus = (() => {
@@ -451,9 +456,9 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div v-if="events.length" class="timeline-window">
+          <div v-if="visibleEvents.length" class="timeline-window">
             <div class="timeline">
-              <article v-for="item in events" :key="`${item.type}-${item.receivedAt}-${item.detail}`" class="timeline-item">
+              <article v-for="item in visibleEvents" :key="`${item.type}-${item.receivedAt}-${item.detail}`" class="timeline-item">
                 <div class="timeline-head">
                   <strong>{{ item.title }}</strong>
                   <span>{{ formatTime(item.receivedAt) }}</span>

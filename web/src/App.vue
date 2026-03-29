@@ -26,7 +26,7 @@ const teammateEntries = computed(() => primaryTable.value?.teammates || []);
 const assistStatuses = new Set(['请求平局', '平局完成', '等待验证', '验证通过', '验证失败']);
 const activeTeammateEntries = computed(() => teammateEntries.value.filter(item => !assistStatuses.has(item.status)));
 const assistEventTypes = new Set(['friend_help_request', 'friend_helped', 'friend_help_verify_request', 'friend_help_verify_result']);
-const assistEvents = computed(() => events.value.filter(e => assistEventTypes.has(e.type)).slice(0, 8));
+const assistEvents = computed(() => events.value.filter(e => assistEventTypes.has(e.type)).slice(0, 1));
 const teammateCount = computed(() => activeTeammateEntries.value.length);
 const waitingCount = computed(() => activeTeammateEntries.value.filter((item) => item.waiting).length);
 const idleCount = computed(() => activeTeammateEntries.value.filter((item) => !item.waiting).length);
@@ -408,7 +408,7 @@ onUnmounted(() => {
             <h2>平局协助记录</h2>
             <p>本机参与平局协助的事件记录</p>
           </div>
-          <span class="panel-tag">{{ assistEvents.length }} 条</span>
+          <span class="panel-tag">最新</span>
         </div>
         <div class="teammate-grid">
           <article v-for="item in assistEvents" :key="`assist-${item.type}-${item.receivedAt}`" class="teammate-card">

@@ -159,13 +159,25 @@ const state = {
   },
   tables: {},
   events: [],
+  assistEvents: [],
   latestByTopic: {},
   messages: []
 };
 
+// 只有这些类型进入主事件流（最新动态）
+const mainEventTypes = new Set(['friend_started_game', 'friend_joined', 'runtime_state_bootstrap']);
+const assistEventTypes = new Set(['friend_help_request', 'friend_helped', 'friend_help_verify_request', 'friend_help_verify_result']);
+
 const upsertEvent = (event) => {
-  state.events.unshift(event);
-  state.events = state.events.slice(0, 50);
+  if (assistEventTypes.has(event.type)) {
+    // 平局类事件存入 assistEvents，按 actor 去重（同一人只保留最新）
+    state.assistEvents = state.assistEvents.filter(e => e.actor !== event.actor || e.type !== event.type);
+    state.assistEvents.unshift(event);
+    state.assistEvents = state.assistEvents.slice(0, 30);
+  } else if (mainEventTypes.has(event.type)) {
+    state.events.unshift(event);
+    state.events = state.events.slice(0, 50);
+  }
 };
 
 app.use(cors({ origin: true, credentials: true }));
@@ -249,6 +261,8 @@ app.get('/api/auth/status', (req, res) => {
 
 // 保护敏感API
 app.get('/api/state', requireAuth, (_req, res) => {
+  // 确保 assistEvents 存在（旧实例热重载兼容）
+  if (!state.assistEvents) state.assistEvents = [];
   res.json(state);
 });
 

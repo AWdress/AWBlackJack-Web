@@ -53,10 +53,10 @@ console.log('================================');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const webDistPath = path.resolve(__dirname, '../../web/dist');
+const eventsFilePath = path.resolve(__dirname, '../data/events.json');
 const configuredRuntimeStatePath = process.env.RUNTIME_STATE_PATH;
 const runtimeStateCandidates = [
   configuredRuntimeStatePath,
-  path.resolve('/data/runtime_state.json'),
   path.resolve(__dirname, '../data/runtime_state.json'),
   path.resolve(__dirname, '../../../AWBlackJack/temp_file/runtime_state.json')
 ].filter(Boolean);
@@ -164,9 +164,34 @@ const state = {
   messages: []
 };
 
+// 启动时加载持久化事件记录
+try {
+  if (fs.existsSync(eventsFilePath)) {
+    const saved = JSON.parse(fs.readFileSync(eventsFilePath, 'utf8'));
+    if (Array.isArray(saved.events)) state.events = saved.events.slice(0, 10);
+    if (Array.isArray(saved.assistEvents)) state.assistEvents = saved.assistEvents.slice(0, 10);
+    console.log(`已加载持久化事件记录：events=${state.events.length}条，assistEvents=${state.assistEvents.length}条`);
+  }
+} catch (e) {
+  console.warn('加载持久化事件记录失败:', e.message);
+}
+
 // 只有这些类型进入主事件流（最新动态）
 const mainEventTypes = new Set(['friend_started_game', 'friend_joined', 'runtime_state_bootstrap']);
 const assistEventTypes = new Set(['friend_help_request', 'friend_helped', 'friend_help_verify_request', 'friend_help_verify_result']);
+
+const saveEventsToFile = () => {
+  try {
+    const dir = path.dirname(eventsFilePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(eventsFilePath, JSON.stringify({
+      events: state.events.slice(0, 10),
+      assistEvents: state.assistEvents.slice(0, 10)
+    }, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('保存持久化事件记录失败:', e.message);
+  }
+};
 
 const upsertEvent = (event) => {
   if (assistEventTypes.has(event.type)) {
@@ -178,6 +203,7 @@ const upsertEvent = (event) => {
     state.events.unshift(event);
     state.events = state.events.slice(0, 50);
   }
+  saveEventsToFile();
 };
 
 app.use(cors({ origin: true, credentials: true }));
@@ -597,9 +623,11 @@ const updateTableState = (topic, payload, receivedAt) => {
         return newVal;
       };
 
-      const rawGameId = payload.gameid ?? payload.helper_gameid ?? payload.target_gameid ?? payload.gameId;
-      const rawAmount = payload.amount ?? payload.bet ?? payload.wager;
-      const rawPoint  = payload.point ?? payload.current_point ?? payload.currentPoint;
+      // 协助类消息不覆盖队友自己的开局信息（gameId/amount/point 保留上次开局值）
+      const isAssistEvent = ['friend_help_request', 'friend_helped', 'friend_help_verify_request', 'friend_help_verify_result'].includes(payload.type);
+      const rawGameId = isAssistEvent ? undefined : (payload.gameid ?? payload.helper_gameid ?? payload.target_gameid ?? payload.gameId);
+      const rawAmount = isAssistEvent ? undefined : (payload.amount ?? payload.bet ?? payload.wager);
+      const rawPoint  = isAssistEvent ? undefined : (payload.point ?? payload.current_point ?? payload.currentPoint);
 
       const teammate = {
         senderId,

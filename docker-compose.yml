@@ -8,4 +8,4 @@ services:
     env_file:
       - ./server/.env
     volumes:
-      - ./server/data/runtime_state.json:/data/runtime_state.json:ro
+      - ./server/data:/app/server/data

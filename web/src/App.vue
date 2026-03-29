@@ -267,8 +267,13 @@ onMounted(() => {
     // 静默核验会话有效性，失效时会自动跳回登录页
     checkAuthStatus(true);
   } else {
-    // 没有token，正常检查认证状态
-    checkAuthStatus();
+    // 没有token（浏览器重开后sessionStorage已清空），但cookie可能仍有效
+    // 检查认证状态，若有效则直接初始化Dashboard，无需重新登录
+    checkAuthStatus().then((data) => {
+      if (data && data.isAuthenticated) {
+        initDashboard();
+      }
+    }).catch(() => {});
   }
 });
 
